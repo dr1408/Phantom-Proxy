@@ -100,3 +100,14 @@ Repeater requests are fired from the **background worker** using `fetch()` — t
 - [ ] Response diff viewer (compare two repeater responses)
 - [ ] WebSocket frame inspector
 - [ ] Fuzzer tab (payload lists)
+
+---
+
+## PHANTOMPROXY — PRIVACY POLICY
+Last updated: June 2026
+- No data collection. PhantomProxy does not collect, store, transmit, or share any personal data or user information with any third party, including the developer.
+- Local operation only. All HTTP traffic captured by the extension is processed entirely within your local browser. - Request data is held in memory for the duration of your DevTools session and is never sent to any remote server.
+- No analytics. The extension contains no analytics, telemetry, crash reporting, or tracking of any kind.
+- No external services. The extension makes no outbound connections of its own. The only network requests it makes are those explicitly initiated by the user via the Repeater tab.
+- Data you send via Repeater. When you use the Repeater tab to send a request, that request goes directly from your browser to the target URL you specify. No data passes through any server operated by the developer.
+Contact. For questions about this policy, contact: naveen.jagadeesan@outlook.com
