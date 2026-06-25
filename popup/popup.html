@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 260px;
+      background: #0c1117;
+      color: #d4e8f5;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      padding: 12px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid rgba(0,229,255,0.15);
+      padding-bottom: 10px;
+    }
+    .brand-hex { font-size: 22px; color: #00e5ff; }
+    .brand-name { font-size: 14px; font-weight: 700; letter-spacing: 2px; color: #d4e8f5; }
+    .brand-name span { color: #00e5ff; }
+    .info-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .info-key { color: #3d5a73; font-size: 10px; letter-spacing: 1px; }
+    .info-val { color: #00e5ff; font-size: 10px; }
+    .hint {
+      margin-top: 12px;
+      padding: 8px;
+      background: rgba(0,229,255,0.05);
+      border: 1px solid rgba(0,229,255,0.1);
+      border-radius: 3px;
+      color: #7a9ab5;
+      font-size: 10px;
+      line-height: 1.6;
+    }
+    .hint strong { color: #00e5ff; }
+  </style>
+</head>
+<body>
+  <div class="brand">
+    <span class="brand-hex">⬡</span>
+    <span class="brand-name">PHANTOM<span>PROXY</span></span>
+  </div>
+
+  <div class="info-row">
+    <span class="info-key">VERSION</span>
+    <span class="info-val">1.0.0</span>
+  </div>
+  <div class="info-row">
+    <span class="info-key">STATUS</span>
+    <span class="info-val" style="color:#00ff9d">● ACTIVE</span>
+  </div>
+  <div class="info-row">
+    <span class="info-key">MODE</span>
+    <span class="info-val">PASSIVE CAPTURE</span>
+  </div>
+
+  <div class="hint">
+    Open <strong>DevTools</strong> (F12) and click the
+    <strong>⬡ PhantomProxy</strong> tab to inspect and replay traffic.
+  </div>
+</body>
+</html>

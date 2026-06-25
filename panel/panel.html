@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhantomProxy</title>
+  <link rel="stylesheet" href="panel.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ═══ TOPBAR ═══ -->
+    <header id="topbar">
+      <div id="brand">
+        <span class="brand-hex">⬡</span>
+        <span class="brand-name">PHANTOM<span class="brand-accent">PROXY</span></span>
+      </div>
+
+      <nav id="tabs">
+        <button class="tab-btn active" data-tab="history">
+          <span class="tab-icon">◈</span> HISTORY
+        </button>
+        <button class="tab-btn" data-tab="repeater">
+          <span class="tab-icon">⟳</span> REPEATER
+        </button>
+        <button class="tab-btn" data-tab="decoder">
+          <span class="tab-icon">⌥</span> DECODER
+        </button>
+      </nav>
+
+      <div id="topbar-controls">
+        <div id="capture-indicator">
+          <span class="pulse-dot" id="pulse-dot"></span>
+          <span id="capture-label">CAPTURING</span>
+        </div>
+        <button class="ctrl-btn" id="btn-clear" title="Clear all requests">⌫ CLEAR</button>
+        <button class="ctrl-btn" id="btn-pause" title="Pause capture">⏸ PAUSE</button>
+      </div>
+    </header>
+
+    <!-- ═══ HISTORY TAB ═══ -->
+    <div id="tab-history" class="tab-pane active">
+
+      <!-- Filter Bar -->
+      <div id="filter-bar">
+        <div class="filter-group">
+          <span class="filter-label">FILTER</span>
+          <input type="text" id="filter-url" placeholder="domain or path…" spellcheck="false" />
+        </div>
+        <div class="filter-group">
+          <span class="filter-label">METHOD</span>
+          <div id="method-filters">
+            <button class="method-chip active" data-method="ALL">ALL</button>
+            <button class="method-chip" data-method="GET">GET</button>
+            <button class="method-chip" data-method="POST">POST</button>
+            <button class="method-chip" data-method="PUT">PUT</button>
+            <button class="method-chip" data-method="DELETE">DEL</button>
+            <button class="method-chip" data-method="PATCH">PATCH</button>
+            <button class="method-chip" data-method="OPTIONS">OPT</button>
+          </div>
+        </div>
+        <div class="filter-group">
+          <span class="filter-label">STATUS</span>
+          <div id="status-filters">
+            <button class="status-chip active" data-status="ALL">ALL</button>
+            <button class="status-chip" data-status="2xx">2xx</button>
+            <button class="status-chip" data-status="3xx">3xx</button>
+            <button class="status-chip" data-status="4xx">4xx</button>
+            <button class="status-chip" data-status="5xx">5xx</button>
+            <button class="status-chip" data-status="ERR">ERR</button>
+          </div>
+        </div>
+        <div class="filter-group ml-auto">
+          <span id="request-count">0 requests</span>
+        </div>
+      </div>
+
+      <!-- Split: Request List + Detail -->
+      <div id="history-split">
+
+        <!-- Request List -->
+        <div id="request-list-pane">
+          <div id="request-list-header">
+            <span class="col-method">METHOD</span>
+            <span class="col-status">STATUS</span>
+            <span class="col-url">URL</span>
+            <span class="col-type">TYPE</span>
+            <span class="col-time">TIME</span>
+          </div>
+          <div id="request-list">
+            <div id="empty-state">
+              <div class="empty-hex">⬡</div>
+              <p>Waiting for traffic…</p>
+              <p class="empty-sub">Browse any page to capture HTTP requests</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Request Detail -->
+        <div id="detail-pane">
+          <div id="detail-empty">
+            <div class="empty-hex">◈</div>
+            <p>Select a request to inspect</p>
+          </div>
+
+          <div id="detail-content" class="hidden">
+            <div id="detail-topbar">
+              <div id="detail-url-bar">
+                <span id="detail-method-badge"></span>
+                <span id="detail-url-text"></span>
+              </div>
+              <div id="detail-actions">
+                <button class="action-btn" id="btn-send-repeater">⟳ SEND TO REPEATER</button>
+                <button class="action-btn secondary" id="btn-copy-curl">⎘ COPY AS CURL</button>
+              </div>
+            </div>
+
+            <div id="detail-meta">
+              <span class="meta-pill" id="meta-status"></span>
+              <span class="meta-pill" id="meta-duration"></span>
+              <span class="meta-pill" id="meta-size"></span>
+              <span class="meta-pill" id="meta-type"></span>
+            </div>
+
+            <div id="detail-tabs">
+              <button class="dtab active" data-dtab="req-headers">REQ HEADERS</button>
+              <button class="dtab" data-dtab="req-body">REQ BODY</button>
+              <button class="dtab" data-dtab="res-headers">RES HEADERS</button>
+              <button class="dtab" data-dtab="raw">RAW</button>
+            </div>
+
+            <div id="dtab-req-headers" class="dtab-pane active">
+              <div id="req-headers-table" class="kv-table"></div>
+            </div>
+            <div id="dtab-req-body" class="dtab-pane">
+              <pre id="req-body-content" class="code-block"></pre>
+            </div>
+            <div id="dtab-res-headers" class="dtab-pane">
+              <div id="res-headers-table" class="kv-table"></div>
+            </div>
+            <div id="dtab-raw" class="dtab-pane">
+              <pre id="raw-content" class="code-block"></pre>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ═══ REPEATER TAB ═══ -->
+    <div id="tab-repeater" class="tab-pane hidden">
+      <div id="repeater-container">
+
+        <!-- Repeater Sessions -->
+        <div id="repeater-sessions-bar">
+          <div id="repeater-session-tabs" class="session-tabs">
+            <!-- dynamic -->
+          </div>
+          <button id="btn-new-repeater" class="ctrl-btn">+ NEW</button>
+        </div>
+
+        <!-- Repeater Editor -->
+        <div id="repeater-split">
+          <!-- Request Editor -->
+          <div id="repeater-request-pane">
+            <div class="pane-header">
+              <span class="pane-title">REQUEST</span>
+              <div id="repeater-url-row">
+                <select id="rep-method">
+                  <option>GET</option><option>POST</option><option>PUT</option>
+                  <option>PATCH</option><option>DELETE</option><option>OPTIONS</option>
+                  <option>HEAD</option>
+                </select>
+                <input type="text" id="rep-url" placeholder="https://target.com/api/endpoint" spellcheck="false" />
+                <button id="btn-send-req" class="send-btn">▶ SEND</button>
+              </div>
+            </div>
+
+            <div id="rep-editor-tabs">
+              <button class="rep-etab active" data-etab="rep-headers-editor">HEADERS</button>
+              <button class="rep-etab" data-etab="rep-body-editor">BODY</button>
+              <button class="rep-etab" data-etab="rep-raw-editor">RAW HTTP</button>
+            </div>
+
+            <div id="rep-etab-rep-headers-editor" class="rep-etab-pane active">
+              <div id="headers-editor-container">
+                <div id="headers-editor-rows">
+                  <!-- dynamic rows -->
+                </div>
+                <button id="btn-add-header" class="ctrl-btn small">+ ADD HEADER</button>
+              </div>
+            </div>
+
+            <div id="rep-etab-rep-body-editor" class="rep-etab-pane hidden">
+              <div id="body-editor-topbar">
+                <span class="filter-label">CONTENT-TYPE</span>
+                <select id="body-content-type">
+                  <option value="application/json">JSON</option>
+                  <option value="application/x-www-form-urlencoded">Form URL Encoded</option>
+                  <option value="multipart/form-data">Multipart</option>
+                  <option value="text/plain">Plain Text</option>
+                  <option value="application/xml">XML</option>
+                </select>
+                <button class="ctrl-btn small" id="btn-format-body">⌥ FORMAT</button>
+              </div>
+              <textarea id="rep-body" placeholder='{"key": "value"}'></textarea>
+            </div>
+
+            <div id="rep-etab-rep-raw-editor" class="rep-etab-pane hidden">
+              <textarea id="rep-raw" placeholder="GET /path HTTP/1.1&#10;Host: example.com&#10;User-Agent: PhantomProxy/1.0&#10;&#10;"></textarea>
+              <div class="raw-note">⚠ Raw HTTP mode — edit the full request manually. Headers and body tabs will be overridden.</div>
+            </div>
+          </div>
+
+          <!-- Response Viewer -->
+          <div id="repeater-response-pane">
+            <div class="pane-header">
+              <span class="pane-title">RESPONSE</span>
+              <div id="response-meta-bar" class="hidden">
+                <span class="meta-pill" id="rep-meta-status"></span>
+                <span class="meta-pill" id="rep-meta-duration"></span>
+                <span class="meta-pill" id="rep-meta-size"></span>
+              </div>
+            </div>
+
+            <div id="rep-res-tabs">
+              <button class="rep-rtab active" data-rtab="rep-res-body">BODY</button>
+              <button class="rep-rtab" data-rtab="rep-res-headers">HEADERS</button>
+            </div>
+
+            <div id="rep-rtab-rep-res-body" class="rep-rtab-pane active">
+              <div id="rep-response-empty">
+                <div class="empty-hex">▶</div>
+                <p>Hit SEND to fire the request</p>
+              </div>
+              <pre id="rep-response-body" class="code-block hidden"></pre>
+            </div>
+            <div id="rep-rtab-rep-res-headers" class="rep-rtab-pane hidden">
+              <div id="rep-res-headers-table" class="kv-table"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ DECODER TAB ═══ -->
+    <div id="tab-decoder" class="tab-pane hidden">
+      <div id="decoder-container">
+        <div class="decoder-panel">
+          <div class="pane-header">
+            <span class="pane-title">INPUT</span>
+            <div id="decoder-controls">
+              <select id="decode-action">
+                <option value="b64-decode">Base64 → Decode</option>
+                <option value="b64-encode">Base64 ← Encode</option>
+                <option value="url-decode">URL → Decode</option>
+                <option value="url-encode">URL ← Encode</option>
+                <option value="html-decode">HTML → Decode</option>
+                <option value="html-encode">HTML ← Encode</option>
+                <option value="hex-encode">→ Hex</option>
+                <option value="hex-decode">← Hex</option>
+                <option value="json-format">JSON Format</option>
+                <option value="jwt-decode">JWT Decode</option>
+                <option value="md5">MD5 Hash</option>
+                <option value="sha256">SHA-256 Hash</option>
+              </select>
+              <button id="btn-decode" class="send-btn">⟳ TRANSFORM</button>
+              <button id="btn-decode-chain" class="ctrl-btn">⇄ TO OUTPUT→INPUT</button>
+            </div>
+          </div>
+          <textarea id="decoder-input" placeholder="Paste encoded/raw data here…"></textarea>
+        </div>
+
+        <div class="decoder-panel">
+          <div class="pane-header">
+            <span class="pane-title">OUTPUT</span>
+            <div>
+              <button class="ctrl-btn small" id="btn-copy-output">⎘ COPY</button>
+            </div>
+          </div>
+          <textarea id="decoder-output" readonly placeholder="Result will appear here…"></textarea>
+        </div>
+
+        <!-- JWT Inspector (shown when JWT decode selected) -->
+        <div id="jwt-inspector" class="hidden">
+          <div class="decoder-panel">
+            <div class="pane-header"><span class="pane-title">JWT HEADER</span></div>
+            <pre id="jwt-header" class="code-block"></pre>
+          </div>
+          <div class="decoder-panel">
+            <div class="pane-header"><span class="pane-title">JWT PAYLOAD</span></div>
+            <pre id="jwt-payload" class="code-block"></pre>
+          </div>
+          <div class="decoder-panel jwt-sig-panel">
+            <div class="pane-header"><span class="pane-title">SIGNATURE</span></div>
+            <pre id="jwt-sig" class="code-block"></pre>
+            <div id="jwt-alg-warning" class="hidden warning-banner">⚠ Algorithm: <span id="jwt-alg-name"></span> — Verify server enforces algorithm!</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ STATUS BAR ═══ -->
+    <footer id="statusbar">
+      <span id="status-msg">PhantomProxy ready</span>
+      <span id="status-version">v1.0.0</span>
+    </footer>
+
+  </div>
+
+  <script src="panel.js"></script>
+</body>
+</html>

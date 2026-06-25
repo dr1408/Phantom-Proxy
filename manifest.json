@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "PhantomProxy",
+  "version": "1.0.1",
+  "description": "HTTP traffic inspector and repeater for security researchers. Visualize, filter, and replay HTTP requests like a lightweight Burp Suite repeater.",
+  "author": "PhantomProxy",
+
+  "permissions": [
+    "webRequest",
+    "tabs",
+    "storage",
+    "scripting",
+    "webNavigation"
+  ],
+
+  "host_permissions": [
+    "<all_urls>"
+  ],
+
+  "background": {
+    "service_worker": "background/worker.js",
+    "type": "module"
+  },
+
+  "devtools_page": "devtools/devtools.html",
+
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "PhantomProxy"
+  },
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": ["panel/*", "icons/*", "devtools/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
