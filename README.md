@@ -110,4 +110,3 @@ Last updated: June 2026
 - No analytics. The extension contains no analytics, telemetry, crash reporting, or tracking of any kind.
 - No external services. The extension makes no outbound connections of its own. The only network requests it makes are those explicitly initiated by the user via the Repeater tab.
 - Data you send via Repeater. When you use the Repeater tab to send a request, that request goes directly from your browser to the target URL you specify. No data passes through any server operated by the developer.
-Contact. For questions about this policy, contact: naveen.jagadeesan@outlook.com
