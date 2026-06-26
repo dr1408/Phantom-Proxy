@@ -111,7 +111,7 @@ Repeater requests are fired from the **background worker** using `fetch()` — t
 ![img](/screenshots/01.png)
 
 ### Repeater Tab
-![img](/screenshots/012.png)
+![img](/screenshots/02.png)
 
 ### Decoder Tab - JWT Decode
 ![img](/screenshots/03.png)
