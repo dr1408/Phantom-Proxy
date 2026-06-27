@@ -37,20 +37,33 @@ chrome.runtime.onConnect.addListener((port) => {
     return;
   }
 
-  if (!port.name.startsWith("phantom-devtools-")) return;
+  // ── DevTools panel port ──
+  if (port.name.startsWith("phantom-devtools-")) {
+    const rawId = port.name.split("phantom-devtools-")[1];
+    const tabId = parseInt(rawId, 10);
+    if (!Number.isFinite(tabId)) { port.disconnect(); return; }
 
-  const rawId = port.name.split("phantom-devtools-")[1];
-  const tabId = parseInt(rawId, 10);
-  if (!Number.isFinite(tabId)) {
-    port.disconnect();
+    devtoolsPorts.set(tabId, port);
+    port.onMessage.addListener((msg) => handlePanelMessage(msg, port, tabId));
+    port.onDisconnect.addListener(() => devtoolsPorts.delete(tabId));
+    port.postMessage({ type: "INIT_REQUESTS", requests: requestStore });
     return;
   }
 
-  devtoolsPorts.set(tabId, port);
-  port.onMessage.addListener((msg) => handlePanelMessage(msg, port, tabId));
-  port.onDisconnect.addListener(() => devtoolsPorts.delete(tabId));
+  // ── Standalone window port ──
+  // Receives ALL requests across all tabs — tab filtering done in UI
+  if (port.name === "phantom-standalone") {
+    const key = `standalone_${Date.now()}_${Math.random()}`;
+    devtoolsPorts.set(key, port);
+    port.onMessage.addListener((msg) => handlePanelMessage(msg, port, null));
+    port.onDisconnect.addListener(() => devtoolsPorts.delete(key));
+    // Send full history immediately so standalone window shows existing traffic
+    port.postMessage({ type: "INIT_REQUESTS", requests: requestStore });
+    return;
+  }
 
-  port.postMessage({ type: "INIT_REQUESTS", requests: requestStore });
+  // Unknown port name — reject
+  port.disconnect();
 });
 
 function broadcastToDevtools(message) {
@@ -434,3 +447,4 @@ function extractBody(requestBody) {
 
   return null;
 }
+

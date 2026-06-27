@@ -3,64 +3,256 @@
 <head>
   <meta charset="UTF-8"/>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Rajdhani:wght@500;600;700&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      width: 260px;
-      background: #0c1117;
+      width: 280px;
+      background: #080c10;
       color: #d4e8f5;
       font-family: 'JetBrains Mono', monospace;
       font-size: 12px;
-      padding: 12px;
     }
+
+    /* ── Header ── */
+    .header {
+      padding: 14px 14px 12px;
+      border-bottom: 1px solid rgba(0,229,255,0.12);
+      position: relative;
+    }
+
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: -1px; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, #00e5ff, transparent);
+      opacity: 0.4;
+    }
+
     .brand {
       display: flex;
       align-items: center;
       gap: 8px;
-      margin-bottom: 12px;
-      border-bottom: 1px solid rgba(0,229,255,0.15);
-      padding-bottom: 10px;
+      margin-bottom: 10px;
     }
-    .brand-hex { font-size: 22px; color: #00e5ff; }
-    .brand-name { font-size: 14px; font-weight: 700; letter-spacing: 2px; color: #d4e8f5; }
+
+    .brand-hex {
+      font-size: 22px;
+      color: #00e5ff;
+      filter: drop-shadow(0 0 8px #00e5ff);
+      animation: hex-pulse 3s ease-in-out infinite;
+    }
+
+    @keyframes hex-pulse {
+      0%,100% { filter: drop-shadow(0 0 4px #00e5ff); }
+      50%      { filter: drop-shadow(0 0 14px #00e5ff); }
+    }
+
+    .brand-name {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 2.5px;
+    }
+
     .brand-name span { color: #00e5ff; }
-    .info-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
-    .info-key { color: #3d5a73; font-size: 10px; letter-spacing: 1px; }
-    .info-val { color: #00e5ff; font-size: 10px; }
-    .hint {
-      margin-top: 12px;
-      padding: 8px;
-      background: rgba(0,229,255,0.05);
-      border: 1px solid rgba(0,229,255,0.1);
-      border-radius: 3px;
-      color: #7a9ab5;
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .status-dot {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      color: #00ff9d;
+    }
+
+    .pulse {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #00ff9d;
+      box-shadow: 0 0 6px #00ff9d;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.4; transform: scale(0.7); }
+    }
+
+    .version {
       font-size: 10px;
+      color: #3d5a73;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Body ── */
+    .body { padding: 14px; }
+
+    /* ── Execute Button ── */
+    .execute-btn {
+      width: 100%;
+      padding: 11px;
+      background: linear-gradient(135deg, rgba(0,229,255,0.12), rgba(0,229,255,0.04));
+      border: 1px solid #00e5ff;
+      border-radius: 3px;
+      color: #00e5ff;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.15s ease;
+      margin-bottom: 10px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .execute-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(0,229,255,0.15), transparent);
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+
+    .execute-btn:hover {
+      box-shadow: 0 0 20px rgba(0,229,255,0.25), inset 0 0 20px rgba(0,229,255,0.05);
+      transform: translateY(-1px);
+    }
+
+    .execute-btn:hover::before { opacity: 1; }
+    .execute-btn:active { transform: translateY(0); }
+
+    .execute-icon {
+      font-size: 18px;
+      filter: drop-shadow(0 0 4px #00e5ff);
+    }
+
+    .execute-sub {
+      font-size: 10px;
+      color: #3d5a73;
+      text-align: center;
+      margin-bottom: 14px;
+      font-family: 'Rajdhani', sans-serif;
+      letter-spacing: 0.5px;
+      line-height: 1.5;
+    }
+
+    /* ── Divider ── */
+    .divider {
+      height: 1px;
+      background: rgba(0,229,255,0.08);
+      margin: 12px 0;
+    }
+
+    /* ── DevTools hint ── */
+    .devtools-hint {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 10px;
+      background: rgba(0,229,255,0.03);
+      border: 1px solid rgba(0,229,255,0.08);
+      border-radius: 3px;
+    }
+
+    .hint-icon { font-size: 15px; color: #3d5a73; flex-shrink: 0; margin-top: 1px; }
+
+    .hint-text {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 11px;
+      color: #3d5a73;
       line-height: 1.6;
     }
-    .hint strong { color: #00e5ff; }
+
+    .hint-text strong { color: #7a9ab5; }
+
+    /* ── Info rows ── */
+    .info-rows { margin-bottom: 12px; }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+
+    .info-row:last-child { border-bottom: none; }
+    .info-key { color: #3d5a73; font-size: 10px; font-family: 'Rajdhani', sans-serif; letter-spacing: 1px; font-weight: 600; }
+    .info-val { font-size: 10px; color: #7a9ab5; }
   </style>
 </head>
 <body>
-  <div class="brand">
-    <span class="brand-hex">⬡</span>
-    <span class="brand-name">PHANTOM<span>PROXY</span></span>
+
+  <div class="header">
+    <div class="brand">
+      <span class="brand-hex">⬡</span>
+      <span class="brand-name">PHANTOM<span>PROXY</span></span>
+    </div>
+    <div class="status-row">
+      <div class="status-dot">
+        <div class="pulse"></div>
+        ACTIVE
+      </div>
+      <span class="version">v1.1.0</span>
+    </div>
   </div>
 
-  <div class="info-row">
-    <span class="info-key">VERSION</span>
-    <span class="info-val">1.0.0</span>
-  </div>
-  <div class="info-row">
-    <span class="info-key">STATUS</span>
-    <span class="info-val" style="color:#00ff9d">● ACTIVE</span>
-  </div>
-  <div class="info-row">
-    <span class="info-key">MODE</span>
-    <span class="info-val">PASSIVE CAPTURE</span>
+  <div class="body">
+
+    <!-- Execute Button -->
+    <button class="execute-btn" id="btn-execute">
+      <span class="execute-icon">◈</span>
+      EXECUTE
+    </button>
+    <p class="execute-sub">Opens PhantomProxy in a dedicated full-screen window</p>
+
+    <div class="divider"></div>
+
+    <!-- Info -->
+    <div class="info-rows">
+      <div class="info-row">
+        <span class="info-key">MODE</span>
+        <span class="info-val">PASSIVE CAPTURE</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">MAX REQUESTS</span>
+        <span class="info-val">500</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">BODY CAP</span>
+        <span class="info-val">64 KB</span>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- DevTools hint -->
+    <div class="devtools-hint">
+      <span class="hint-icon">ℹ</span>
+      <span class="hint-text">
+        Also available inside <strong>DevTools (F12)</strong> under the PhantomProxy panel tab.
+      </span>
+    </div>
+
   </div>
 
-  <div class="hint">
-    Open <strong>DevTools</strong> (F12) and click the
-    <strong>⬡ PhantomProxy</strong> tab to inspect and replay traffic.
-  </div>
+  <script src="popup.js"></script>
 </body>
 </html>

@@ -1021,3 +1021,136 @@ html, body, #app {
 
 /* ─── Selection highlight ────────────────────────────── */
 ::selection { background: rgba(0,229,255,0.2); }
+
+/* ─── Reload Nudge Button ────────────────────────────── */
+.reload-nudge-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 8px 18px;
+  background: transparent;
+  border: 1px solid var(--cyan-dim);
+  border-radius: var(--radius-sm);
+  color: var(--cyan);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  cursor: pointer;
+  transition: all var(--transition);
+  animation: nudge-appear 0.4s ease-out 1s both;
+}
+
+.reload-nudge-btn:hover {
+  background: var(--cyan-subtle);
+  border-color: var(--cyan);
+  box-shadow: 0 0 14px var(--cyan-glow);
+}
+
+.reload-nudge-btn:active {
+  transform: scale(0.97);
+}
+
+.reload-icon {
+  font-size: 15px;
+  display: inline-block;
+  animation: spin-once 0.5s ease-out;
+}
+
+.reload-nudge-btn:hover .reload-icon {
+  animation: spin-loop 1s linear infinite;
+}
+
+@keyframes spin-once {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes spin-loop {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes nudge-appear {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Standalone Window Mode ─────────────────────────── */
+body.standalone #topbar {
+  -webkit-app-region: drag;
+  padding-left: 16px;
+}
+
+body.standalone #topbar > * {
+  -webkit-app-region: no-drag;
+}
+
+.tab-selector-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border);
+}
+
+.tab-selector-label {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+#tab-target-select {
+  padding: 3px 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+  min-width: 320px;
+  transition: border-color var(--transition);
+}
+
+#tab-target-select:focus {
+  border-color: var(--cyan-dim);
+}
+
+#btn-refresh-tabs {
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--transition);
+  line-height: 1;
+}
+
+#btn-refresh-tabs:hover {
+  border-color: var(--cyan-dim);
+  color: var(--cyan);
+}
+
+.standalone-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(180, 79, 255, 0.1);
+  border: 1px solid rgba(180, 79, 255, 0.3);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--purple);
+}

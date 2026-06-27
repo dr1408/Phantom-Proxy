@@ -38,6 +38,16 @@
       </div>
     </header>
 
+    <!-- ═══ STANDALONE TAB SELECTOR (shown only in popup window mode) ═══ -->
+    <div class="tab-selector-bar hidden" id="standalone-tab-bar">
+      <span class="tab-selector-label">MONITORING TAB</span>
+      <select id="tab-target-select">
+        <option value="all">⬡ All Tabs</option>
+      </select>
+      <button id="btn-refresh-tabs" title="Refresh tab list">⟳</button>
+      <span class="standalone-badge">◈ STANDALONE MODE</span>
+    </div>
+
     <!-- ═══ HISTORY TAB ═══ -->
     <div id="tab-history" class="tab-pane active">
 
@@ -91,7 +101,10 @@
             <div id="empty-state">
               <div class="empty-hex">⬡</div>
               <p>Waiting for traffic…</p>
-              <p class="empty-sub">Browse any page to capture HTTP requests</p>
+              <p class="empty-sub">Requests made <em>before</em> opening this panel are not captured</p>
+              <button id="btn-reload-page" class="reload-nudge-btn">
+                <span class="reload-icon">&#x27F3;</span> RELOAD PAGE TO CAPTURE FROM START
+              </button>
             </div>
           </div>
         </div>

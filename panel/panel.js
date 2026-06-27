@@ -33,13 +33,33 @@ const METHOD_CSS_MAP  = Object.freeze({
 // ─── Background Connection ────────────────────────────────────────────────────
 let bgPort = null;
 
+// Detect standalone mode once — used throughout the file
+const IS_STANDALONE = new URLSearchParams(window.location.search).get("mode") === "standalone";
+
 function connectBackground() {
+  if (IS_STANDALONE) {
+    connectStandaloneBackground();
+  } else {
+    connectDevtoolsBackground();
+  }
+}
+
+function connectDevtoolsBackground() {
   const tabId = chrome.devtools.inspectedWindow.tabId;
   bgPort = chrome.runtime.connect({ name: `phantom-devtools-${tabId}` });
   bgPort.onMessage.addListener(handleBgMessage);
   bgPort.onDisconnect.addListener(() => {
     setStatus("Connection lost — reconnecting…");
-    setTimeout(connectBackground, 1000);
+    setTimeout(connectDevtoolsBackground, 1000);
+  });
+}
+
+function connectStandaloneBackground() {
+  bgPort = chrome.runtime.connect({ name: "phantom-standalone" });
+  bgPort.onMessage.addListener(handleBgMessage);
+  bgPort.onDisconnect.addListener(() => {
+    setStatus("Connection lost — reconnecting…");
+    setTimeout(connectStandaloneBackground, 1000);
   });
 }
 
@@ -184,6 +204,14 @@ document.getElementById("btn-pause").addEventListener("click", () => {
 // ─── Request List Rendering ───────────────────────────────────────────────────
 function getFilteredRequests() {
   return allRequests.filter(req => {
+    // Tab filter — only active in standalone mode
+    if (IS_STANDALONE) {
+      const select = document.getElementById("tab-target-select");
+      if (select && select.value !== "all") {
+        const targetTabId = parseInt(select.value, 10);
+        if (Number.isFinite(targetTabId) && req.tabId !== targetTabId) return false;
+      }
+    }
     if (methodFilter !== "ALL" && req.method !== methodFilter) return false;
     if (statusFilter !== "ALL") {
       const code = req.statusCode;
@@ -879,6 +907,120 @@ function setStatus(msg) {
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
+// Standalone mode is detected via IS_STANDALONE (set at module top).
+// connectBackground() routes to the correct port based on mode.
+
+// In standalone mode — init UI before connecting
+if (IS_STANDALONE) {
+  initStandaloneUI();
+}
+
 connectBackground();
 setStatus("PhantomProxy ready");
 createRepeaterSession(null);
+
+// ═══════════════════════════════════════════════════════
+// STANDALONE UI INIT
+// ═══════════════════════════════════════════════════════
+
+function initStandaloneUI() {
+  document.body.classList.add("standalone");
+
+  // Show tab selector bar
+  const tabBar = document.getElementById("standalone-tab-bar");
+  if (tabBar) tabBar.classList.remove("hidden");
+
+  // Populate tabs dropdown
+  populateTabSelector();
+
+  // Refresh tab list button
+  const refreshBtn = document.getElementById("btn-refresh-tabs");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", populateTabSelector);
+  }
+
+  // Tab selection change — re-render filtered list
+  const select = document.getElementById("tab-target-select");
+  if (select) {
+    select.addEventListener("change", () => {
+      renderRequestList();
+      const label = select.value === "all"
+        ? "Monitoring all tabs"
+        : `Monitoring: ${select.options[select.selectedIndex].text}`;
+      setStatus(label);
+    });
+  }
+}
+
+function populateTabSelector() {
+  const select = document.getElementById("tab-target-select");
+  if (!select) return;
+
+  chrome.tabs.query({}, (tabs) => {
+    const currentVal = select.value; // preserve selection across refresh
+    select.innerHTML = "";
+
+    // All tabs option
+    const allOpt = document.createElement("option");
+    allOpt.value = "all";
+    allOpt.textContent = "⬡ All Tabs";
+    select.appendChild(allOpt);
+
+    tabs
+      .filter(t => t.url && (t.url.startsWith("http://") || t.url.startsWith("https://")))
+      .forEach(tab => {
+        const opt  = document.createElement("option");
+        opt.value  = String(tab.id);
+        const host = (() => { try { return new URL(tab.url).host; } catch { return tab.url; } })();
+        const title = tab.title ? tab.title.slice(0, 45) : host;
+        opt.textContent = `[${tab.id}] ${host} — ${title}`;
+        select.appendChild(opt);
+      });
+
+    // Restore previous selection if still available
+    if (currentVal && [...select.options].some(o => o.value === currentVal)) {
+      select.value = currentVal;
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// RELOAD NUDGE — works in both DevTools and Standalone
+// ═══════════════════════════════════════════════════════
+
+const reloadBtn = document.getElementById("btn-reload-page");
+if (reloadBtn) {
+  reloadBtn.addEventListener("click", () => {
+    if (IS_STANDALONE) {
+      // Standalone: reload whichever tab is selected in the dropdown
+      const select = document.getElementById("tab-target-select");
+      const val    = select ? select.value : "all";
+
+      if (val === "all" || !Number.isFinite(parseInt(val, 10))) {
+        // No specific tab selected — prompt user to pick one
+        setStatus("⚠ Select a specific tab from the dropdown first, then reload");
+        if (select) {
+          select.style.borderColor = "var(--amber)";
+          setTimeout(() => { select.style.borderColor = ""; }, 2000);
+        }
+        return;
+      }
+
+      const tabId = parseInt(val, 10);
+      chrome.tabs.reload(tabId, {}, () => {
+        setStatus("Tab reloading — capturing from start…");
+        // Clear existing requests for this tab so history starts fresh
+        allRequests = allRequests.filter(r => r.tabId !== tabId);
+        renderRequestList();
+      });
+
+    } else {
+      // DevTools mode: reload the inspected tab directly
+      chrome.devtools.inspectedWindow.reload({});
+      allRequests = [];
+      renderRequestList();
+      showDetailEmpty();
+      setStatus("Page reloading — capturing from start…");
+    }
+  });
+}
