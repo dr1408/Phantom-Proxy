@@ -139,6 +139,7 @@
               <button class="dtab active" data-dtab="req-headers">REQ HEADERS</button>
               <button class="dtab" data-dtab="req-body">REQ BODY</button>
               <button class="dtab" data-dtab="res-headers">RES HEADERS</button>
+              <button class="dtab" data-dtab="res-pretty">RES PRETTY</button>
               <button class="dtab" data-dtab="raw">RAW</button>
             </div>
 
@@ -150,6 +151,13 @@
             </div>
             <div id="dtab-res-headers" class="dtab-pane">
               <div id="res-headers-table" class="kv-table"></div>
+            </div>
+            <div id="dtab-res-pretty" class="dtab-pane">
+              <div id="detail-pretty-toolbar" style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg-deep);border-bottom:1px solid var(--border);">
+                <span style="font-family:var(--font-ui);font-size:10px;color:var(--text-dim);letter-spacing:1px;">RE-SEND REQUEST TO VIEW RESPONSE BODY</span>
+                <button class="ctrl-btn small" id="btn-detail-copy-pretty">⎘ COPY</button>
+              </div>
+              <pre id="detail-res-pretty" class="code-block pretty-json"></pre>
             </div>
             <div id="dtab-raw" class="dtab-pane">
               <pre id="raw-content" class="code-block"></pre>
@@ -239,6 +247,14 @@
             <div id="rep-res-tabs">
               <button class="rep-rtab active" data-rtab="rep-res-body">BODY</button>
               <button class="rep-rtab" data-rtab="rep-res-headers">HEADERS</button>
+              <div class="rep-res-tab-actions" id="rep-res-tab-actions">
+                <div class="view-toggle">
+                  <button class="view-toggle-btn active" id="btn-view-raw" title="Raw response">RAW</button>
+                  <button class="view-toggle-btn" id="btn-view-pretty" title="Prettified response">PRETTY</button>
+                </div>
+                <button class="ctrl-btn small" id="btn-copy-response" title="Copy response body">⎘ COPY</button>
+                <button class="ctrl-btn small" id="btn-wrap-toggle" title="Toggle word wrap">⇌ WRAP</button>
+              </div>
             </div>
 
             <div id="rep-rtab-rep-res-body" class="rep-rtab-pane active">

@@ -1154,3 +1154,74 @@ body.standalone #topbar > * {
   letter-spacing: 1px;
   color: var(--purple);
 }
+
+/* ─── Repeater Response Tab Actions ──────────────────── */
+#rep-res-tabs {
+  display: flex;
+  align-items: center;
+}
+
+.rep-res-tab-actions {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding-right: 8px;
+}
+
+.rep-res-tab-actions.visible {
+  display: flex;
+}
+
+/* ─── Raw / Pretty Toggle ────────────────────────────── */
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.view-toggle-btn {
+  padding: 2px 9px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all var(--transition);
+  border-right: 1px solid var(--border);
+}
+
+.view-toggle-btn:last-child {
+  border-right: none;
+}
+
+.view-toggle-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.view-toggle-btn.active {
+  background: var(--cyan-subtle);
+  color: var(--cyan);
+}
+
+/* ─── Pretty View ────────────────────────────────────── */
+#rep-response-body.pretty-json .json-key     { color: var(--cyan-dim); }
+#rep-response-body.pretty-json .json-string  { color: var(--green); }
+#rep-response-body.pretty-json .json-number  { color: var(--amber); }
+#rep-response-body.pretty-json .json-bool    { color: var(--purple); }
+#rep-response-body.pretty-json .json-null    { color: var(--red); }
+
+#rep-response-body.wrap-on {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+#rep-response-body.wrap-off {
+  white-space: pre;
+  overflow-x: auto;
+}

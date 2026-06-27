@@ -1,273 +1,210 @@
-// PhantomProxy — Background Service Worker (Security-Hardened)
-// Audit fixes applied: CRIT-5, CRIT-6, HIGH-1, HIGH-2, HIGH-3, MED-3
-
+// PhantomProxy — Background Service Worker v1.3.0
+// Classic SW (no ES module) for full MV3 + Edge webRequest compatibility
 "use strict";
 
-const MAX_REQUESTS      = 500;
-const MAX_BODY_BYTES    = 64 * 1024;        // 64 KB per captured request body
-const MAX_RESPONSE_BYTES = 2 * 1024 * 1024; // 2 MB max response body in repeater
-const ALLOWED_SCHEMES   = ["http:", "https:"];
+var MAX_REQUESTS       = 500;
+var MAX_BODY_BYTES     = 64 * 1024;
+var MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+var ALLOWED_SCHEMES    = ["http:", "https:"];
+var ALLOWED_METHODS    = ["GET","POST","PUT","PATCH","DELETE","OPTIONS","HEAD"];
 
-// ─── Private SSRF block-list (RFC-1918 + link-local + loopback) ───────────────
-const BLOCKED_HOSTNAME_PATTERNS = [
-  /^localhost$/i,
-  /^127\./,
-  /^0\.0\.0\.0$/,
-  /^10\./,
-  /^172\.(1[6-9]|2\d|3[01])\./,
-  /^192\.168\./,
-  /^169\.254\./,          // link-local / AWS IMDS
-  /^::1$/,               // IPv6 loopback
-  /^fc00:/i,             // IPv6 ULA
-  /^fe80:/i,             // IPv6 link-local
-  /^0+$/,                // 0.0.0.0 variants
+var BLOCKED_HOSTS = [
+  /^localhost$/i, /^127\./, /^0\.0\.0\.0$/, /^10\./,
+  /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./, /^169\.254\./,
+  /^::1$/, /^fc00:/i, /^fe80:/i
 ];
 
-let requestStore = [];
-let requestMap   = new Map();    // requestId_tabId -> entry
-let devtoolsPorts = new Map();   // tabId -> port
+var requestStore  = [];
+var requestMap    = {};
+var devtoolsPorts = {};
+var portCounter   = 0;
 
-// ─── Port Management ──────────────────────────────────────────────────────────
+// ─── Keep service worker alive while ports connected ──
+var keepAliveInterval = null;
 
-chrome.runtime.onConnect.addListener((port) => {
-  // [HIGH-1] Validate sender — only accept connections from our own extension
-  if (port.sender?.id !== chrome.runtime.id) {
-    console.warn("PhantomProxy: rejected connection from unknown sender", port.sender?.id);
+function startKeepalive() {
+  if (keepAliveInterval) return;
+  keepAliveInterval = setInterval(function() {
+    // ping self to prevent SW termination
+    chrome.runtime.getPlatformInfo(function() {});
+  }, 25000);
+}
+
+function stopKeepalive() {
+  if (Object.keys(devtoolsPorts).length === 0 && keepAliveInterval) {
+    clearInterval(keepAliveInterval);
+    keepAliveInterval = null;
+  }
+}
+
+// ─── Port Connections ─────────────────────────────────
+chrome.runtime.onConnect.addListener(function(port) {
+  var isDevtools   = port.name.indexOf("phantom-devtools-") === 0;
+  var isStandalone = port.name === "phantom-standalone";
+
+  if (!isDevtools && !isStandalone) {
     port.disconnect();
     return;
   }
 
-  // ── DevTools panel port ──
-  if (port.name.startsWith("phantom-devtools-")) {
-    const rawId = port.name.split("phantom-devtools-")[1];
-    const tabId = parseInt(rawId, 10);
-    if (!Number.isFinite(tabId)) { port.disconnect(); return; }
+  var key;
 
-    devtoolsPorts.set(tabId, port);
-    port.onMessage.addListener((msg) => handlePanelMessage(msg, port, tabId));
-    port.onDisconnect.addListener(() => devtoolsPorts.delete(tabId));
-    port.postMessage({ type: "INIT_REQUESTS", requests: requestStore });
-    return;
+  if (isDevtools) {
+    var rawId = port.name.replace("phantom-devtools-", "");
+    var tabId = parseInt(rawId, 10);
+    if (!isFinite(tabId)) { port.disconnect(); return; }
+    key = "devtools_" + tabId;
+  } else {
+    key = "standalone_" + (++portCounter);
   }
 
-  // ── Standalone window port ──
-  // Receives ALL requests across all tabs — tab filtering done in UI
-  if (port.name === "phantom-standalone") {
-    const key = `standalone_${Date.now()}_${Math.random()}`;
-    devtoolsPorts.set(key, port);
-    port.onMessage.addListener((msg) => handlePanelMessage(msg, port, null));
-    port.onDisconnect.addListener(() => devtoolsPorts.delete(key));
-    // Send full history immediately so standalone window shows existing traffic
-    port.postMessage({ type: "INIT_REQUESTS", requests: requestStore });
-    return;
-  }
+  devtoolsPorts[key] = port;
+  startKeepalive();
 
-  // Unknown port name — reject
-  port.disconnect();
+  port.onMessage.addListener(function(msg) {
+    handlePanelMessage(msg, port);
+  });
+
+  port.onDisconnect.addListener(function() {
+    delete devtoolsPorts[key];
+    stopKeepalive();
+  });
+
+  // Send existing requests immediately
+  port.postMessage({ type: "INIT_REQUESTS", requests: requestStore });
 });
 
 function broadcastToDevtools(message) {
-  devtoolsPorts.forEach((port) => {
-    try { port.postMessage(message); } catch (_) { /* port disconnected */ }
+  Object.keys(devtoolsPorts).forEach(function(key) {
+    try { devtoolsPorts[key].postMessage(message); } catch(e) {}
   });
 }
 
-// ─── Message Handler ──────────────────────────────────────────────────────────
+// ─── Message Handler ──────────────────────────────────
+function handlePanelMessage(msg, port) {
+  if (!msg || typeof msg.type !== "string") return;
 
-async function handlePanelMessage(msg, port, tabId) {
-  if (!msg || typeof msg.type !== "string") return;  // [HIGH-1] type must be string
+  if (msg.type === "GET_REQUESTS") {
+    port.postMessage({ type: "INIT_REQUESTS", requests: requestStore });
+    return;
+  }
 
-  switch (msg.type) {
-    case "GET_REQUESTS":
-      port.postMessage({ type: "INIT_REQUESTS", requests: requestStore });
-      break;
+  if (msg.type === "CLEAR_REQUESTS") {
+    requestStore = [];
+    broadcastToDevtools({ type: "REQUESTS_CLEARED" });
+    return;
+  }
 
-    case "CLEAR_REQUESTS":
-      requestStore = [];
-      broadcastToDevtools({ type: "REQUESTS_CLEARED" });
-      break;
-
-    case "SEND_REPEATER": {
-      // [CRIT-5] Validate request object shape before touching it
-      const req = msg.request;
-      if (!req || typeof req !== "object") return;
-
-      const validationError = validateRepeaterRequest(req);
-      if (validationError) {
-        port.postMessage({
-          type: "REPEATER_RESPONSE",
-          id: req.id ?? null,
-          result: { success: false, error: `Blocked: ${validationError}` },
-        });
-        return;
-      }
-
-      const result = await sendRepeaterRequest(req);
-      port.postMessage({ type: "REPEATER_RESPONSE", id: req.id, result });
-      break;
+  if (msg.type === "SEND_REPEATER") {
+    var req = msg.request;
+    if (!req || typeof req !== "object") return;
+    var err = validateRepeaterRequest(req);
+    if (err) {
+      port.postMessage({
+        type: "REPEATER_RESPONSE",
+        id: req.id || null,
+        result: { success: false, error: "Blocked: " + err }
+      });
+      return;
     }
-
-    case "DELETE_REQUEST":
-      if (typeof msg.id === "string") {
-        requestStore = requestStore.filter((r) => r.id !== msg.id);
-        broadcastToDevtools({ type: "REQUEST_DELETED", id: msg.id });
-      }
-      break;
-  }
-}
-
-// ─── URL Validation ───────────────────────────────────────────────────────────
-
-function validateURL(rawUrl) {
-  let parsed;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    return "Invalid URL";
+    sendRepeaterRequest(req).then(function(result) {
+      port.postMessage({ type: "REPEATER_RESPONSE", id: req.id, result: result });
+    });
+    return;
   }
 
-  // [CRIT-5] Only allow http and https
-  if (!ALLOWED_SCHEMES.includes(parsed.protocol)) {
-    return `Scheme '${parsed.protocol}' is not allowed (only http/https)`;
-  }
-
-  // [CRIT-5] Block private/loopback addresses (SSRF)
-  const hostname = parsed.hostname.toLowerCase();
-  for (const pattern of BLOCKED_HOSTNAME_PATTERNS) {
-    if (pattern.test(hostname)) {
-      return `Hostname '${hostname}' is in a blocked range (private/loopback)`;
+  if (msg.type === "DELETE_REQUEST") {
+    if (typeof msg.id === "string") {
+      requestStore = requestStore.filter(function(r) { return r.id !== msg.id; });
+      broadcastToDevtools({ type: "REQUEST_DELETED", id: msg.id });
     }
+    return;
   }
-
-  return null; // OK
 }
 
-// ─── Repeater Request Validation ──────────────────────────────────────────────
-
-const ALLOWED_METHODS = new Set(["GET","POST","PUT","PATCH","DELETE","OPTIONS","HEAD"]);
-
-function validateRepeaterRequest(req) {
-  // Method whitelist
-  if (typeof req.method !== "string" || !ALLOWED_METHODS.has(req.method.toUpperCase())) {
-    return `Method '${req.method}' is not allowed`;
-  }
-
-  // URL check
-  const urlError = validateURL(req.url);
-  if (urlError) return urlError;
-
-  // Headers must be a plain object
-  if (req.requestHeaders !== undefined && typeof req.requestHeaders !== "object") {
-    return "requestHeaders must be an object";
-  }
-
-  return null;
-}
-
-// ─── webRequest Interception ──────────────────────────────────────────────────
-
+// ─── webRequest Capture ───────────────────────────────
 chrome.webRequest.onBeforeRequest.addListener(
-  (details) => {
-    if (shouldSkip(details)) return;
-
-    // [MED-3] Composite key to avoid requestId collision across tabs
-    const mapKey = `${details.requestId}_${details.tabId}`;
-
-    const entry = {
-      id:             `${details.requestId}_${Date.now()}`,
-      requestId:      details.requestId,
-      mapKey,
-      url:            details.url,
-      method:         sanitizeMethod(details.method),
-      timestamp:      Date.now(),
-      tabId:          details.tabId,
-      type:           sanitizeType(details.type),
-      status:         "pending",
-      requestBody:    extractBody(details.requestBody),
-      requestHeaders: Object.create(null),
-      responseHeaders: Object.create(null),
-      statusCode:     null,
-      responseBody:   null,
-      duration:       null,
-      _startTime:     Date.now(),
+  function(details) {
+    if (shouldSkip(details.url)) return;
+    var key = details.requestId + "_" + details.tabId;
+    requestMap[key] = {
+      id:              details.requestId + "_" + Date.now(),
+      requestId:       details.requestId,
+      url:             details.url,
+      method:          sanitizeMethod(details.method),
+      timestamp:       Date.now(),
+      tabId:           details.tabId,
+      type:            sanitizeType(details.type),
+      status:          "pending",
+      requestBody:     extractBody(details.requestBody),
+      requestHeaders:  {},
+      responseHeaders: {},
+      statusCode:      null,
+      duration:        null,
+      _start:          Date.now()
     };
-
-    requestMap.set(mapKey, entry);
   },
   { urls: ["<all_urls>"] },
   ["requestBody"]
 );
 
 chrome.webRequest.onSendHeaders.addListener(
-  (details) => {
-    const mapKey = `${details.requestId}_${details.tabId}`;
-    const entry  = requestMap.get(mapKey);
+  function(details) {
+    var entry = requestMap[details.requestId + "_" + details.tabId];
     if (!entry) return;
-
-    const headers = Object.create(null);
-    details.requestHeaders.forEach((h) => {
-      // [CRIT-6] Strip CRLF from header names and values
-      const name  = sanitizeHeaderToken(h.name);
-      const value = sanitizeHeaderValue(h.value);
-      if (name) headers[name] = value;
+    var h = {};
+    details.requestHeaders.forEach(function(hdr) {
+      var n = sanitizeToken(hdr.name);
+      if (n) h[n] = sanitizeValue(hdr.value);
     });
-    entry.requestHeaders = headers;
+    entry.requestHeaders = h;
   },
   { urls: ["<all_urls>"] },
   ["requestHeaders"]
 );
 
 chrome.webRequest.onHeadersReceived.addListener(
-  (details) => {
-    const mapKey = `${details.requestId}_${details.tabId}`;
-    const entry  = requestMap.get(mapKey);
+  function(details) {
+    var entry = requestMap[details.requestId + "_" + details.tabId];
     if (!entry) return;
-
-    const headers = Object.create(null);
-    details.responseHeaders.forEach((h) => {
-      const name  = sanitizeHeaderToken(h.name);
-      const value = sanitizeHeaderValue(h.value);
-      if (name) headers[name] = value;
+    var h = {};
+    details.responseHeaders.forEach(function(hdr) {
+      var n = sanitizeToken(hdr.name);
+      if (n) h[n] = sanitizeValue(hdr.value);
     });
-    entry.responseHeaders = headers;
-    entry.statusCode      = details.statusCode;
+    entry.responseHeaders = h;
+    entry.statusCode = details.statusCode;
   },
   { urls: ["<all_urls>"] },
   ["responseHeaders"]
 );
 
 chrome.webRequest.onCompleted.addListener(
-  (details) => {
-    const mapKey = `${details.requestId}_${details.tabId}`;
-    const entry  = requestMap.get(mapKey);
+  function(details) {
+    var key   = details.requestId + "_" + details.tabId;
+    var entry = requestMap[key];
     if (!entry) return;
-
-    entry.status    = "complete";
+    entry.status     = "complete";
     entry.statusCode = details.statusCode;
-    entry.duration  = Date.now() - entry._startTime;
-    delete entry._startTime;
-    delete entry.mapKey;
-
+    entry.duration   = Date.now() - entry._start;
+    delete entry._start;
     finalizeRequest(entry);
-    requestMap.delete(mapKey);
+    delete requestMap[key];
   },
   { urls: ["<all_urls>"] }
 );
 
 chrome.webRequest.onErrorOccurred.addListener(
-  (details) => {
-    const mapKey = `${details.requestId}_${details.tabId}`;
-    const entry  = requestMap.get(mapKey);
+  function(details) {
+    var key   = details.requestId + "_" + details.tabId;
+    var entry = requestMap[key];
     if (!entry) return;
-
     entry.status   = "error";
-    entry.error    = sanitizeHeaderValue(details.error ?? "Unknown error");
-    entry.duration = Date.now() - (entry._startTime || Date.now());
-    delete entry._startTime;
-    delete entry.mapKey;
-
+    entry.error    = sanitizeValue(details.error || "Unknown error");
+    entry.duration = Date.now() - (entry._start || Date.now());
+    delete entry._start;
     finalizeRequest(entry);
-    requestMap.delete(mapKey);
+    delete requestMap[key];
   },
   { urls: ["<all_urls>"] }
 );
@@ -278,173 +215,128 @@ function finalizeRequest(entry) {
   broadcastToDevtools({ type: "NEW_REQUEST", request: entry });
 }
 
-// ─── Repeater ─────────────────────────────────────────────────────────────────
+// ─── URL Validation ───────────────────────────────────
+function validateURL(url) {
+  var parsed;
+  try { parsed = new URL(url); } catch(e) { return "Invalid URL"; }
+  if (ALLOWED_SCHEMES.indexOf(parsed.protocol) === -1) {
+    return "Scheme '" + parsed.protocol + "' not allowed";
+  }
+  var host = parsed.hostname.toLowerCase();
+  for (var i = 0; i < BLOCKED_HOSTS.length; i++) {
+    if (BLOCKED_HOSTS[i].test(host)) return "Hostname '" + host + "' is blocked";
+  }
+  return null;
+}
 
+function validateRepeaterRequest(req) {
+  if (!req.method || ALLOWED_METHODS.indexOf(req.method.toUpperCase()) === -1) {
+    return "Method '" + req.method + "' not allowed";
+  }
+  return validateURL(req.url);
+}
+
+// ─── Repeater Fetch ───────────────────────────────────
 async function sendRepeaterRequest(req) {
-  const startTime = Date.now();
+  var start = Date.now();
   try {
-    const method = req.method.toUpperCase();
-
-    // Build sanitized headers — [CRIT-6] strip CRLF from all header k/v
-    const safeHeaders = Object.create(null);
-    const rawHeaders  = req.requestHeaders || {};
-
-    for (const [k, v] of Object.entries(rawHeaders)) {
-      if (!Object.prototype.hasOwnProperty.call(rawHeaders, k)) continue;
-      const name  = sanitizeHeaderToken(k);
-      const value = sanitizeHeaderValue(v);
-      if (!name) continue;
-
-      // Strip headers the browser controls
-      const lower = name.toLowerCase();
-      if (["host", "content-length", "transfer-encoding", "connection"].includes(lower)) continue;
-
+    var method      = req.method.toUpperCase();
+    var safeHeaders = {};
+    var raw         = req.requestHeaders || {};
+    Object.keys(raw).forEach(function(k) {
+      if (!Object.prototype.hasOwnProperty.call(raw, k)) return;
+      var name  = sanitizeToken(k);
+      var value = sanitizeValue(raw[k]);
+      if (!name) return;
+      var lower = name.toLowerCase();
+      if (["host","content-length","transfer-encoding","connection"].indexOf(lower) >= 0) return;
       safeHeaders[name] = value;
-    }
-
-    const options = {
-      method,
-      headers: safeHeaders,
-      redirect: "manual",
-      // [HIGH-3] Limit request body size accepted
-      ...(method !== "GET" && method !== "HEAD" && req.requestBody
-        ? { body: req.requestBody.slice(0, MAX_BODY_BYTES) }
-        : {}),
-    };
-
-    const response = await fetch(req.url, options);
-    const duration = Date.now() - startTime;
-
-    // Collect response headers safely
-    const responseHeaders = Object.create(null);
-    response.headers.forEach((val, key) => {
-      responseHeaders[sanitizeHeaderToken(key)] = sanitizeHeaderValue(val);
     });
 
-    // [HIGH-3] Cap response body size
-    let body = "";
-    const contentType = response.headers.get("content-type") || "";
-    const isText =
-      contentType.includes("text") ||
-      contentType.includes("json") ||
-      contentType.includes("xml")  ||
-      contentType.includes("javascript");
+    var options = { method: method, headers: safeHeaders, redirect: "manual" };
+    if (method !== "GET" && method !== "HEAD" && req.requestBody) {
+      options.body = req.requestBody.slice(0, MAX_BODY_BYTES);
+    }
+
+    var response = await fetch(req.url, options);
+    var duration = Date.now() - start;
+    var resHeaders = {};
+    response.headers.forEach(function(val, key) {
+      resHeaders[sanitizeToken(key)] = sanitizeValue(val);
+    });
+
+    var body     = "";
+    var ct       = response.headers.get("content-type") || "";
+    var isText   = ct.indexOf("text") >= 0 || ct.indexOf("json") >= 0 ||
+                   ct.indexOf("xml") >= 0  || ct.indexOf("javascript") >= 0;
 
     if (isText) {
-      const reader  = response.body.getReader();
-      const chunks  = [];
-      let totalSize = 0;
-      let truncated = false;
-
+      var reader    = response.body.getReader();
+      var chunks    = [];
+      var total     = 0;
+      var truncated = false;
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        totalSize += value.length;
-        if (totalSize > MAX_RESPONSE_BYTES) {
-          truncated = true;
-          reader.cancel();
-          break;
-        }
-        chunks.push(value);
+        var chunk = await reader.read();
+        if (chunk.done) break;
+        total += chunk.value.length;
+        if (total > MAX_RESPONSE_BYTES) { truncated = true; reader.cancel(); break; }
+        chunks.push(chunk.value);
       }
-
-      const decoder = new TextDecoder();
-      body = chunks.map(c => decoder.decode(c, { stream: true })).join("");
-      if (truncated) body += `\n\n[... truncated at ${MAX_RESPONSE_BYTES / 1024}KB ...]`;
+      var dec = new TextDecoder();
+      body = chunks.map(function(c) { return dec.decode(c, { stream: true }); }).join("");
+      if (truncated) body += "\n\n[... truncated at " + (MAX_RESPONSE_BYTES/1024) + "KB ...]";
     } else {
       body = "[Binary response — not displayed]";
     }
 
     return {
-      success:         true,
-      statusCode:      response.status,
-      statusText:      response.statusText,
-      responseHeaders: Object.fromEntries(Object.entries(responseHeaders)),
-      body,
-      duration,
-      size: body.length,
+      success: true, statusCode: response.status, statusText: response.statusText,
+      responseHeaders: resHeaders, body: body, duration: duration, size: body.length
     };
-  } catch (err) {
-    return {
-      success:  false,
-      error:    err.message,
-      duration: Date.now() - startTime,
-    };
+  } catch(err) {
+    return { success: false, error: err.message, duration: Date.now() - start };
   }
 }
 
-// ─── Sanitization Helpers ─────────────────────────────────────────────────────
+// ─── Sanitization ─────────────────────────────────────
+var ALLOWED_TYPES = ["main_frame","sub_frame","stylesheet","script","image","font",
+  "object","xmlhttprequest","ping","csp_report","media","websocket","other"];
 
-// Whitelist HTTP methods
-function sanitizeMethod(method) {
-  const upper = String(method || "").toUpperCase();
-  return ALLOWED_METHODS.has(upper) ? upper : "GET";
+function sanitizeMethod(m) {
+  var u = String(m || "").toUpperCase();
+  return ALLOWED_METHODS.indexOf(u) >= 0 ? u : "GET";
 }
-
-// Whitelist resource types
-const ALLOWED_TYPES = new Set([
-  "main_frame","sub_frame","stylesheet","script","image","font",
-  "object","xmlhttprequest","ping","csp_report","media","websocket","other"
-]);
-function sanitizeType(type) {
-  return ALLOWED_TYPES.has(type) ? type : "other";
+function sanitizeType(t) {
+  return ALLOWED_TYPES.indexOf(t) >= 0 ? t : "other";
 }
-
-// [CRIT-6] Strip CR, LF, NUL from header names (RFC 7230 token)
-function sanitizeHeaderToken(name) {
+function sanitizeToken(name) {
   if (typeof name !== "string") return "";
   return name.replace(/[\r\n\0]/g, "").trim();
 }
-
-// [CRIT-6] Strip CR, LF, NUL from header values
-function sanitizeHeaderValue(value) {
-  if (typeof value !== "string") return String(value ?? "");
+function sanitizeValue(value) {
+  if (typeof value !== "string") return String(value == null ? "" : value);
   return value.replace(/[\r\n\0]/g, " ").trim();
 }
-
-// ─── Capture Skip List ────────────────────────────────────────────────────────
-
-function shouldSkip(details) {
-  const url = details.url;
-  return (
-    url.startsWith("chrome-extension://") ||
-    url.startsWith("chrome://")           ||
-    url.startsWith("devtools://")         ||
-    url.startsWith("about:")              ||
-    url.startsWith("data:")               ||
-    url.startsWith("blob:")               ||
-    url.startsWith("file:")
-  );
+function shouldSkip(url) {
+  return url.startsWith("chrome-extension://") || url.startsWith("chrome://") ||
+         url.startsWith("devtools://") || url.startsWith("about:") ||
+         url.startsWith("data:") || url.startsWith("blob:") || url.startsWith("file:");
 }
-
-// ─── Body Extraction ─────────────────────────────────────────────────────────
-
 function extractBody(requestBody) {
   if (!requestBody) return null;
-
-  // [HIGH-2] Truncate large bodies
   if (requestBody.raw) {
     try {
-      const bytes   = new Uint8Array(requestBody.raw[0].bytes);
-      const slice   = bytes.slice(0, MAX_BODY_BYTES);
-      const decoder = new TextDecoder("utf-8", { fatal: false });
-      const text    = decoder.decode(slice);
-      return bytes.length > MAX_BODY_BYTES
-        ? text + `\n[... truncated at ${MAX_BODY_BYTES / 1024}KB]`
-        : text;
-    } catch {
-      return "[binary body]";
-    }
+      var bytes = new Uint8Array(requestBody.raw[0].bytes);
+      var slice = bytes.slice(0, MAX_BODY_BYTES);
+      var text  = new TextDecoder("utf-8", { fatal: false }).decode(slice);
+      return bytes.length > MAX_BODY_BYTES ? text + "\n[truncated]" : text;
+    } catch(e) { return "[binary body]"; }
   }
-
   if (requestBody.formData) {
-    return Object.entries(requestBody.formData)
-      .filter(([k]) => Object.prototype.hasOwnProperty.call(requestBody.formData, k))
-      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-      .join("&")
-      .slice(0, MAX_BODY_BYTES);
+    return Object.keys(requestBody.formData)
+      .filter(function(k) { return Object.prototype.hasOwnProperty.call(requestBody.formData, k); })
+      .map(function(k) { return encodeURIComponent(k) + "=" + encodeURIComponent(requestBody.formData[k]); })
+      .join("&").slice(0, MAX_BODY_BYTES);
   }
-
   return null;
 }
-
