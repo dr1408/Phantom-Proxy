@@ -846,17 +846,6 @@ html, body, #app {
   border-bottom: 1px solid var(--border);
 }
 
-#body-content-type {
-  padding: 3px 6px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  outline: none;
-}
-
 #rep-body, #rep-raw {
   flex: 1;
   padding: 10px 12px;

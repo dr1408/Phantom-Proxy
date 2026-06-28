@@ -1,4 +1,4 @@
-// PhantomProxy — Background Service Worker v1.3.0
+// PhantomProxy — Background Service Worker v1.3.0 (FULLY FIXED)
 // Classic SW (no ES module) for full MV3 + Edge webRequest compatibility
 "use strict";
 
@@ -8,10 +8,15 @@ var MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 var ALLOWED_SCHEMES    = ["http:", "https:"];
 var ALLOWED_METHODS    = ["GET","POST","PUT","PATCH","DELETE","OPTIONS","HEAD"];
 
+// ─── FIX 1: Remove private IP block ───────────────────
 var BLOCKED_HOSTS = [
-  /^localhost$/i, /^127\./, /^0\.0\.0\.0$/, /^10\./,
-  /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./, /^169\.254\./,
-  /^::1$/, /^fc00:/i, /^fe80:/i
+  /^localhost$/i, /^127\./, /^0\.0\.0\.0$/
+  // Private IPs now allowed for testing
+  // /^10\./,
+  // /^172\.(1[6-9]|2\d|3[01])\./,
+  // /^192\.168\./,
+  // /^169\.254\./,
+  // /^::1$/, /^fc00:/i, /^fe80:/i
 ];
 
 var requestStore  = [];
@@ -19,13 +24,15 @@ var requestMap    = {};
 var devtoolsPorts = {};
 var portCounter   = 0;
 
+// ─── FIX 2: Store cookies per tab ─────────────────────
+var tabCookies = {};
+
 // ─── Keep service worker alive while ports connected ──
 var keepAliveInterval = null;
 
 function startKeepalive() {
   if (keepAliveInterval) return;
   keepAliveInterval = setInterval(function() {
-    // ping self to prevent SW termination
     chrome.runtime.getPlatformInfo(function() {});
   }, 25000);
 }
@@ -70,7 +77,6 @@ chrome.runtime.onConnect.addListener(function(port) {
     stopKeepalive();
   });
 
-  // Send existing requests immediately
   port.postMessage({ type: "INIT_REQUESTS", requests: requestStore });
 });
 
@@ -127,6 +133,7 @@ chrome.webRequest.onBeforeRequest.addListener(
   function(details) {
     if (shouldSkip(details.url)) return;
     var key = details.requestId + "_" + details.tabId;
+    
     requestMap[key] = {
       id:              details.requestId + "_" + Date.now(),
       requestId:       details.requestId,
@@ -141,26 +148,46 @@ chrome.webRequest.onBeforeRequest.addListener(
       responseHeaders: {},
       statusCode:      null,
       duration:        null,
-      _start:          Date.now()
+      _start:          Date.now(),
+      contentType:     null
     };
   },
   { urls: ["<all_urls>"] },
-  ["requestBody"]
+  ["requestBody", "extraHeaders"]
 );
 
+// ─── FIX: Capture headers and store Content-Type ──────
 chrome.webRequest.onSendHeaders.addListener(
   function(details) {
     var entry = requestMap[details.requestId + "_" + details.tabId];
     if (!entry) return;
+    
     var h = {};
+    var contentType = null;
+    
     details.requestHeaders.forEach(function(hdr) {
       var n = sanitizeToken(hdr.name);
-      if (n) h[n] = sanitizeValue(hdr.value);
+      if (n) {
+        h[n] = sanitizeValue(hdr.value);
+        if (n.toLowerCase() === 'content-type') {
+          contentType = hdr.value;
+        }
+      }
     });
+    
     entry.requestHeaders = h;
+    entry.contentType = contentType;
+    
+    // Store cookie for this tab
+    var cookieHeader = details.requestHeaders.find(function(h) {
+      return h.name.toLowerCase() === 'cookie';
+    });
+    if (cookieHeader) {
+      tabCookies[details.tabId] = cookieHeader.value;
+    }
   },
   { urls: ["<all_urls>"] },
-  ["requestHeaders"]
+  ["requestHeaders", "extraHeaders"]
 );
 
 chrome.webRequest.onHeadersReceived.addListener(
@@ -176,7 +203,7 @@ chrome.webRequest.onHeadersReceived.addListener(
     entry.statusCode = details.statusCode;
   },
   { urls: ["<all_urls>"] },
-  ["responseHeaders"]
+  ["responseHeaders", "extraHeaders"]
 );
 
 chrome.webRequest.onCompleted.addListener(
@@ -209,10 +236,52 @@ chrome.webRequest.onErrorOccurred.addListener(
   { urls: ["<all_urls>"] }
 );
 
+// ─── FIX: Rebuild body with correct boundary ──────────
 function finalizeRequest(entry) {
+  // If we have formData and contentType, rebuild with correct boundary
+  if (entry.requestBody && typeof entry.requestBody === 'string' && entry.contentType) {
+    // Check if it's formData format (contains key=value)
+    if (entry.requestBody.indexOf('=') > -1 && entry.requestBody.indexOf('--') === -1) {
+      // Convert formData to multipart with correct boundary
+      var formData = {};
+      entry.requestBody.split('&').forEach(function(pair) {
+        var parts = pair.split('=');
+        if (parts.length === 2) {
+          formData[decodeURIComponent(parts[0])] = decodeURIComponent(parts[1]);
+        }
+      });
+      entry.requestBody = rebuildMultipart(formData, entry.contentType);
+    }
+  }
+  
   if (requestStore.length >= MAX_REQUESTS) requestStore.shift();
   requestStore.push(entry);
   broadcastToDevtools({ type: "NEW_REQUEST", request: entry });
+}
+
+// ─── FIX: Rebuild multipart with correct boundary ──────
+function rebuildMultipart(formData, contentType) {
+  var boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 14);
+  
+  if (contentType) {
+    var match = contentType.match(/boundary=([^;\s]+)/);
+    if (match) {
+      boundary = match[1];
+    }
+  }
+  
+  var parts = [];
+  var keys = Object.keys(formData);
+  
+  keys.forEach(function(key) {
+    parts.push("--" + boundary);
+    parts.push('Content-Disposition: form-data; name="' + key + '"');
+    parts.push("");
+    parts.push(formData[key]);
+  });
+  parts.push("--" + boundary + "--");
+  
+  return parts.join("\r\n").slice(0, MAX_BODY_BYTES);
 }
 
 // ─── URL Validation ───────────────────────────────────
@@ -243,20 +312,51 @@ async function sendRepeaterRequest(req) {
     var method      = req.method.toUpperCase();
     var safeHeaders = {};
     var raw         = req.requestHeaders || {};
+    
     Object.keys(raw).forEach(function(k) {
       if (!Object.prototype.hasOwnProperty.call(raw, k)) return;
       var name  = sanitizeToken(k);
       var value = sanitizeValue(raw[k]);
       if (!name) return;
       var lower = name.toLowerCase();
-      if (["host","content-length","transfer-encoding","connection"].indexOf(lower) >= 0) return;
+      
+      // Only strip transfer-encoding
+      if (["transfer-encoding"].indexOf(lower) >= 0) return;
       safeHeaders[name] = value;
     });
+
+    // ─── FIX #2: Only set if missing ──────────────────────
+    var urlObj = new URL(req.url);
+
+    if (!safeHeaders['Host']) {
+        safeHeaders['Host'] = urlObj.host;
+    }
+    if (!safeHeaders['Origin']) {
+        safeHeaders['Origin'] = urlObj.origin;
+    }
+    if (!safeHeaders['Referer']) {
+        safeHeaders['Referer'] = urlObj.origin + '/';
+    }
+
+    if (!safeHeaders['Cookie'] && req.tabId && tabCookies[req.tabId]) {
+      safeHeaders['Cookie'] = tabCookies[req.tabId];
+    }
 
     var options = { method: method, headers: safeHeaders, redirect: "manual" };
     if (method !== "GET" && method !== "HEAD" && req.requestBody) {
       options.body = req.requestBody.slice(0, MAX_BODY_BYTES);
     }
+
+    // ─── FORCE ADD Content-Length and Connection ──────
+    safeHeaders['Connection'] = 'keep-alive';
+    
+    if (options.body) {
+      var bodyLength = new Blob([options.body]).size;
+      safeHeaders['Content-Length'] = String(bodyLength);
+    }
+
+    // ─── REASSIGN HEADERS ─────────────────────────────
+    options.headers = safeHeaders;
 
     var response = await fetch(req.url, options);
     var duration = Date.now() - start;
@@ -322,21 +422,30 @@ function shouldSkip(url) {
          url.startsWith("devtools://") || url.startsWith("about:") ||
          url.startsWith("data:") || url.startsWith("blob:") || url.startsWith("file:");
 }
+
 function extractBody(requestBody) {
   if (!requestBody) return null;
+  
+  // Try raw first
   if (requestBody.raw) {
     try {
       var bytes = new Uint8Array(requestBody.raw[0].bytes);
-      var slice = bytes.slice(0, MAX_BODY_BYTES);
-      var text  = new TextDecoder("utf-8", { fatal: false }).decode(slice);
-      return bytes.length > MAX_BODY_BYTES ? text + "\n[truncated]" : text;
-    } catch(e) { return "[binary body]"; }
+      var text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+      return text;
+    } catch(e) { 
+      return "[binary body]"; 
+    }
   }
+  
+  // If raw not available, get formData as string
   if (requestBody.formData) {
-    return Object.keys(requestBody.formData)
-      .filter(function(k) { return Object.prototype.hasOwnProperty.call(requestBody.formData, k); })
-      .map(function(k) { return encodeURIComponent(k) + "=" + encodeURIComponent(requestBody.formData[k]); })
-      .join("&").slice(0, MAX_BODY_BYTES);
+    var parts = [];
+    var keys = Object.keys(requestBody.formData);
+    keys.forEach(function(key) {
+      parts.push(encodeURIComponent(key) + "=" + encodeURIComponent(requestBody.formData[key]));
+    });
+    return parts.join("&").slice(0, MAX_BODY_BYTES);
   }
+  
   return null;
 }

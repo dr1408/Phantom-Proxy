@@ -593,7 +593,7 @@ function collectHdrs() {
   return h;
 }
 
-// ─── Send Request ─────────────────────────────────────
+// ─── FIX A: Send Request (REMOVED DROPDOWN OVERRIDE) ──
 document.getElementById("btn-send-req").addEventListener("click", doSend);
 
 function doSend() {
@@ -605,10 +605,10 @@ function doSend() {
   if (!s) { btn.disabled=false; btn.textContent="▶ SEND"; return; }
 
   var h = Object.assign({}, s.headers);
-  var activeEtab = document.querySelector(".rep-etab.active");
-  if (activeEtab && activeEtab.dataset.etab === "rep-body-editor" && s.body) {
-    h["Content-Type"] = document.getElementById("body-content-type").value;
-  }
+  
+  // ─── FIX A: REMOVED DROPDOWN OVERRIDE ──────────────────
+  // The dropdown no longer overwrites Content-Type
+  // Boundary is now preserved from the original request
 
   sendBg({ type:"SEND_REPEATER", request:{ id:activeSessionId, method:s.method, url:s.url, requestHeaders:h, requestBody:s.body||null }});
   btn.disabled=false; btn.textContent="▶ SEND";
@@ -737,7 +737,7 @@ function fmtXml(xml) {
   return out.trim();
 }
 
-// Response viewer buttons
+// ─── Response viewer buttons ──────────────────────────
 var _rb = document.getElementById("btn-view-raw");
 var _pb = document.getElementById("btn-view-pretty");
 var _cb = document.getElementById("btn-copy-response");
