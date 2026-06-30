@@ -270,3 +270,6 @@ Full privacy policy: [thevillagehacker.com/projects/Phantom-Proxy_privacy-policy
 
 ### Decoder Tab — JWT Decode
 ![Decoder JWT](/screenshots/decoder.png)
+
+### Intruder Tab
+![Intruder Tab](/screenshots/intruder.png)
