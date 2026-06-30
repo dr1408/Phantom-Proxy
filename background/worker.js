@@ -1,4 +1,4 @@
-// PhantomProxy — Background Service Worker v1.3.0 (FULLY FIXED)
+// PhantomProxy — Background Service Worker v2.1 (FULLY FIXED)
 // Classic SW (no ES module) for full MV3 + Edge webRequest compatibility
 "use strict";
 
@@ -236,52 +236,14 @@ chrome.webRequest.onErrorOccurred.addListener(
   { urls: ["<all_urls>"] }
 );
 
-// ─── FIX: Rebuild body with correct boundary ──────────
+// ─── FIX: Finalize request — PRESERVE original format ──
 function finalizeRequest(entry) {
-  // If we have formData and contentType, rebuild with correct boundary
-  if (entry.requestBody && typeof entry.requestBody === 'string' && entry.contentType) {
-    // Check if it's formData format (contains key=value)
-    if (entry.requestBody.indexOf('=') > -1 && entry.requestBody.indexOf('--') === -1) {
-      // Convert formData to multipart with correct boundary
-      var formData = {};
-      entry.requestBody.split('&').forEach(function(pair) {
-        var parts = pair.split('=');
-        if (parts.length === 2) {
-          formData[decodeURIComponent(parts[0])] = decodeURIComponent(parts[1]);
-        }
-      });
-      entry.requestBody = rebuildMultipart(formData, entry.contentType);
-    }
-  }
+  // No conversion. Keep the body exactly as captured.
+  // This preserves urlencoded, multipart, and any other format.
   
   if (requestStore.length >= MAX_REQUESTS) requestStore.shift();
   requestStore.push(entry);
   broadcastToDevtools({ type: "NEW_REQUEST", request: entry });
-}
-
-// ─── FIX: Rebuild multipart with correct boundary ──────
-function rebuildMultipart(formData, contentType) {
-  var boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 14);
-  
-  if (contentType) {
-    var match = contentType.match(/boundary=([^;\s]+)/);
-    if (match) {
-      boundary = match[1];
-    }
-  }
-  
-  var parts = [];
-  var keys = Object.keys(formData);
-  
-  keys.forEach(function(key) {
-    parts.push("--" + boundary);
-    parts.push('Content-Disposition: form-data; name="' + key + '"');
-    parts.push("");
-    parts.push(formData[key]);
-  });
-  parts.push("--" + boundary + "--");
-  
-  return parts.join("\r\n").slice(0, MAX_BODY_BYTES);
 }
 
 // ─── URL Validation ───────────────────────────────────
@@ -369,6 +331,7 @@ async function sendRepeaterRequest(req) {
     var ct       = response.headers.get("content-type") || "";
     var isText   = ct.indexOf("text") >= 0 || ct.indexOf("json") >= 0 ||
                    ct.indexOf("xml") >= 0  || ct.indexOf("javascript") >= 0;
+                   
 
     if (isText) {
       var reader    = response.body.getReader();

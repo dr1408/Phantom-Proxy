@@ -26,6 +26,9 @@
         <button class="tab-btn" data-tab="repeater">
           <span class="tab-icon">⟳</span> REPEATER
         </button>
+        <button class="tab-btn" data-tab="intruder">
+          <span class="tab-icon">⚡</span> INTRUDER
+        </button>
         <button class="tab-btn" data-tab="decoder">
           <span class="tab-icon">⌥</span> DECODER
         </button>
@@ -45,7 +48,7 @@
       </div>
     </header>
 
-    <!-- ═══ STANDALONE TAB SELECTOR (shown only in popup window mode) ═══ -->
+    <!-- ═══ STANDALONE TAB SELECTOR ═══ -->
     <div class="tab-selector-bar hidden" id="standalone-tab-bar">
       <span class="tab-selector-label">MONITORING TAB</span>
       <select id="tab-target-select">
@@ -58,7 +61,7 @@
     <!-- ═══ HISTORY TAB ═══ -->
     <div id="tab-history" class="tab-pane active">
 
-      <!-- Filter Bar — Row 1: URL + METHOD + STATUS -->
+      <!-- Filter Bar — Row 1 -->
       <div id="filter-bar">
         <div class="filter-row">
           <div class="filter-group">
@@ -93,7 +96,7 @@
           </div>
         </div>
 
-        <!-- Filter Bar — Row 2: TYPE + SCOPE + HIGHLIGHT -->
+        <!-- Filter Bar — Row 2 -->
         <div class="filter-row filter-row-2">
           <div class="filter-group">
             <span class="filter-label">TYPE</span>
@@ -128,8 +131,6 @@
 
       <!-- Split: Request List + Detail -->
       <div id="history-split">
-
-        <!-- Request List -->
         <div id="request-list-pane">
           <div id="request-list-header">
             <span class="col-method">METHOD</span>
@@ -151,7 +152,6 @@
           </div>
         </div>
 
-        <!-- Request Detail -->
         <div id="detail-pane">
           <div id="detail-empty">
             <div class="empty-hex">◈</div>
@@ -166,6 +166,7 @@
               </div>
               <div id="detail-actions">
                 <button class="action-btn" id="btn-send-repeater">⟳ SEND TO REPEATER</button>
+                <button class="action-btn secondary" id="btn-send-intruder">⚡ SEND TO INTRUDER</button>
                 <button class="action-btn secondary" id="btn-copy-curl">⎘ COPY AS CURL</button>
               </div>
             </div>
@@ -206,23 +207,18 @@
             </div>
           </div>
         </div>
-
       </div>
     </div>
 
     <!-- ═══ REPEATER TAB ═══ -->
     <div id="tab-repeater" class="tab-pane hidden">
       <div id="repeater-container">
-
-        <!-- Repeater Sessions -->
         <div id="repeater-sessions-bar">
-          <div id="repeater-session-tabs" class="session-tabs">
-            <!-- dynamic -->
-          </div>
+          <div id="repeater-session-tabs" class="session-tabs"><!-- dynamic --></div>
           <button id="btn-new-repeater" class="ctrl-btn">+ NEW</button>
           <button id="btn-import-curl" class="ctrl-btn" title="Import cURL command">⬆ IMPORT CURL</button>
         </div>
-        <!-- cURL Import Panel -->
+
         <div id="curl-import-panel" class="hidden">
           <div class="curl-import-header">
             <span class="pane-title">PASTE CURL COMMAND</span>
@@ -232,12 +228,9 @@
           <div class="curl-import-footer">
             <button id="btn-curl-import-do" class="send-btn">⬆ IMPORT INTO REPEATER</button>
           </div>
-        <!-- keep open tag balance -->
         </div>
 
-        <!-- Repeater Editor -->
         <div id="repeater-split">
-          <!-- Request Editor -->
           <div id="repeater-request-pane">
             <div class="pane-header">
               <span class="pane-title">REQUEST</span>
@@ -260,9 +253,7 @@
 
             <div id="rep-etab-rep-headers-editor" class="rep-etab-pane active">
               <div id="headers-editor-container">
-                <div id="headers-editor-rows">
-                  <!-- dynamic rows -->
-                </div>
+                <div id="headers-editor-rows"><!-- dynamic --></div>
                 <button id="btn-add-header" class="ctrl-btn small">+ ADD HEADER</button>
               </div>
             </div>
@@ -281,7 +272,6 @@
             </div>
           </div>
 
-          <!-- Response Viewer -->
           <div id="repeater-response-pane">
             <div class="pane-header">
               <span class="pane-title">RESPONSE</span>
@@ -317,6 +307,122 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- ═══ INTRUDER TAB ═══ -->
+    <div id="tab-intruder" class="tab-pane hidden">
+      <div id="intruder-container">
+
+        <!-- Request Editor -->
+        <div class="intruder-section">
+          <div class="section-header">
+            <span class="pane-title">REQUEST</span>
+            <span class="intruder-hint">Use §payload§ to mark positions</span>
+          </div>
+          <textarea id="intruder-request" class="intruder-textarea" placeholder="POST /api/login HTTP/1.1&#10;Host: target.com&#10;Content-Type: application/json&#10;&#10;{&quot;username&quot;:&quot;§admin§&quot;,&quot;pass&quot;:&quot;§pass§&quot;}"></textarea>
+        </div>
+
+        <!-- Payloads -->
+        <div class="intruder-section">
+          <div class="section-header">
+            <span class="pane-title">PAYLOADS</span>
+            <div class="payload-tabs">
+              <button class="payload-tab active" data-tab="simple">Simple List</button>
+              <button class="payload-tab" data-tab="file">Load from File</button>
+              <button class="payload-tab" data-tab="numbers">Numbers</button>
+            </div>
+          </div>
+
+          <!-- Simple List -->
+          <div id="payload-simple" class="payload-panel active">
+            <textarea id="intruder-payloads" class="intruder-textarea" placeholder="Enter payloads (one per line)"></textarea>
+          </div>
+
+          <!-- File Upload -->
+          <div id="payload-file" class="payload-panel hidden">
+            <div class="file-upload-area">
+              <input type="file" id="intruder-file-input" accept=".txt,.csv,.lst" />
+              <span id="intruder-file-name">No file selected</span>
+            </div>
+            <textarea id="intruder-file-preview" class="intruder-textarea" placeholder="Loaded payloads will appear here..."></textarea>
+          </div>
+
+          <!-- Numbers -->
+          <div id="payload-numbers" class="payload-panel hidden">
+            <div class="number-controls">
+              <label>Start: <input type="number" id="num-start" value="1" /></label>
+              <label>End: <input type="number" id="num-end" value="100" /></label>
+              <label>Step: <input type="number" id="num-step" value="1" /></label>
+              <button id="btn-gen-numbers" class="ctrl-btn small">⟳ GENERATE</button>
+            </div>
+            <textarea id="intruder-num-preview" class="intruder-textarea" placeholder="Generated numbers will appear here..."></textarea>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="intruder-section intruder-controls">
+          <div class="control-row">
+            <select id="intruder-attack-type" class="intruder-select">
+              <option value="sniper">Sniper Mode (1 position, 1 list)</option>
+              <option value="battering-ram">Battering Ram (multiple positions, 1 list)</option>
+              <option value="pitchfork">Pitchfork (user:pass pairs)</option>
+              <option value="cluster-bomb">Cluster Bomb (user:pass combinations)</option>
+            </select>
+            <span class="filter-label">Delay(ms):</span>
+            <input type="number" id="intruder-delay" class="intruder-input" value="100" placeholder="ms" />
+
+            <span class="filter-label">Max Requests:</span>
+            <input type="number" id="intruder-max" class="intruder-input" value="1000" placeholder="requests" />
+            <button id="btn-intruder-start" class="send-btn">▶ START ATTACK</button>
+            <button id="btn-intruder-stop" class="ctrl-btn hidden">⏹ STOP</button>
+          </div>
+        </div>
+
+        <!-- Grep -->
+        <div class="intruder-section intruder-grep">
+          <div class="section-header">
+            <span class="pane-title">GREP - MATCH</span>
+            <span class="intruder-hint">Highlight responses containing these patterns (one per line)</span>
+          </div>
+          <textarea id="intruder-grep" class="intruder-textarea small" placeholder="Enter grep patterns (one per line)"></textarea>
+        </div>
+
+        <!-- Results -->
+        <div class="intruder-section intruder-results">
+          <div class="results-header">
+            <span class="results-title">RESULTS</span>
+            <span id="intruder-count">0</span>
+            <div class="progress-bar">
+              <div id="intruder-progress" style="width:0%"></div>
+            </div>
+            <span id="intruder-status">Ready</span>
+          </div>
+          <div class="results-table-wrapper">
+            <table id="intruder-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Payload</th>
+                  <th>Status</th>
+                  <th>Grep</th>
+                  <th>Length</th>
+                  <th>Time</th>
+                  <th>View</th>
+                </tr>
+              </thead>
+              <tbody id="intruder-results-body"></tbody>
+            </table>
+          </div>
+          <div class="intruder-response-viewer">
+            <div class="response-viewer-header">
+              <span class="pane-title">RESPONSE DETAIL</span>
+              <button id="btn-intruder-copy" class="ctrl-btn small">⎘ COPY</button>
+            </div>
+            <pre id="intruder-response-body" class="code-block">Click a row to view response</pre>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -358,7 +464,6 @@
           <textarea id="decoder-output" readonly placeholder="Result will appear here…"></textarea>
         </div>
 
-        <!-- JWT Inspector (shown when JWT decode selected) -->
         <div id="jwt-inspector" class="hidden">
           <div class="decoder-panel">
             <div class="pane-header"><span class="pane-title">JWT HEADER</span></div>
@@ -418,7 +523,7 @@
     <!-- ═══ STATUS BAR ═══ -->
     <footer id="statusbar">
       <span id="status-msg">PhantomProxy ready</span>
-      <span id="status-version">v2.0.1</span>
+      <span id="status-version">v2.1</span>
     </footer>
 
   </div>

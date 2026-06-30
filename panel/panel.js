@@ -1,4 +1,4 @@
-// PhantomProxy — Panel v2.0.1 (Android Fixed)
+// PhantomProxy — Panel v2.1 (Android Fixed + Intruder)
 // Single clean file — no patches, no appends, no duplicate declarations
 "use strict";
 
@@ -24,18 +24,26 @@ var bgPort            = null;
 
 // Bookmark filter toggle
 var bookmarkFilterOn = false;
-var typeFilters      = {};      // resource type multi-filter: { chipKey: true }
-                               // empty = show ALL
-var scopeFilterOn    = false;   // show in-scope only
+var typeFilters      = {};
+var scopeFilterOn    = false;
 
-// Bookmark state — persisted in chrome.storage.local
-// { [requestId]: { color: "#hex", label: "string" } }
+// Bookmark state
 var bookmarkMap = {};
 
 // Pretty print state
 var lastRespBody      = "";
 var lastRespType      = "";
 var wrapOn            = true;
+
+// ─── INTRUDER STATE ────────────────────────────────────
+var intruderState = {
+  running: false,
+  results: [],
+  total: 0,
+  completed: 0,
+  stopRequested: false,
+  currentIndex: 0
+};
 
 // ─── FIX: Auto-detect standalone mode ──────────────────
 var IS_STANDALONE = false;
@@ -57,6 +65,25 @@ var IS_STANDALONE = false;
         IS_STANDALONE = false;
     }
 })();
+
+// ─── COPY FIX: Universal copy function that works in devtools ──
+function copyText(text) {
+  if (!text) return false;
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;pointer-events:none;';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    var result = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return result;
+  } catch(e) {
+    document.body.removeChild(ta);
+    return false;
+  }
+}
 
 // ─── FIX: Connection with fallback for Android ────────
 var _reconnectTimer = null;
@@ -160,7 +187,9 @@ function onBgMessage(msg) {
       break;
 
     case "REPEATER_RESPONSE":
-      if (typeof msg.id === "string" && msg.id.indexOf("dp_") === 0) {
+      if (typeof msg.id === "string" && msg.id.indexOf("intruder_") === 0) {
+        onIntruderResponse(msg.id, msg.result);
+      } else if (typeof msg.id === "string" && msg.id.indexOf("dp_") === 0) {
         showDetailPrettyResult(msg.result);
       } else {
         onRepeaterResponse(msg.id, msg.result);
@@ -169,7 +198,7 @@ function onBgMessage(msg) {
   }
 }
 
-// ─── Tab Navigation ───────────────────────────────────
+// ─── INTRUDER TABS navigation ─────────────────────────────
 document.querySelectorAll(".tab-btn").forEach(function(btn) {
   btn.addEventListener("click", function() {
     document.querySelectorAll(".tab-btn").forEach(function(b) { b.classList.remove("active"); });
@@ -177,8 +206,69 @@ document.querySelectorAll(".tab-btn").forEach(function(btn) {
     btn.classList.add("active");
     var pane = document.getElementById("tab-" + btn.dataset.tab);
     if (pane) pane.classList.remove("hidden");
+    
+    if (btn.dataset.tab === 'intruder') {
+      initIntruderTabs();  // ← No delay
+    }
   });
 });
+
+// ─── INTRUDER SUB-TABS INIT ─────────────────────────────
+function initIntruderTabs() {
+  var tabs = document.querySelectorAll('.payload-tab');
+  
+  if (tabs.length === 0) {
+    setStatus('⚠️ No payload tabs found');
+    return;
+  }
+  
+  setStatus('🔄 Found ' + tabs.length + ' payload tabs');
+  
+  tabs.forEach(function(tab) {
+    // Remove old listeners by cloning
+    var newTab = tab.cloneNode(true);
+    tab.parentNode.replaceChild(newTab, tab);
+    
+    newTab.addEventListener('click', function(e) {
+      e.preventDefault();
+      
+      var target = this.dataset.tab;
+      setStatus('🔄 Switching to: ' + target);
+      
+      // Update tab styles
+      document.querySelectorAll('.payload-tab').forEach(function(t) {
+        t.classList.remove('active');
+      });
+      this.classList.add('active');
+      
+      // Hide all panels
+      document.querySelectorAll('.payload-panel').forEach(function(p) {
+        p.classList.add('hidden');
+      });
+      
+      // Show target panel
+      var panel = document.getElementById('payload-' + target);
+      if (panel) {
+        panel.classList.remove('hidden');
+        setStatus('✅ Showing: ' + target);
+        
+        // ✅ AUTO-OPEN FILE PICKER when 'file' tab is clicked
+        if (target === 'file') {
+          var fileInput = document.getElementById('intruder-file-input');
+          if (fileInput) {
+            setTimeout(function() {
+              fileInput.click();
+            }, 300);  // Small delay to let panel render
+          }
+        }
+      } else {
+        setStatus('❌ Panel not found: ' + target);
+      }
+    });
+  });
+  
+  setStatus('✅ Intruder tabs ready');
+}
 
 // ─── Filters ──────────────────────────────────────────
 document.getElementById("filter-url").addEventListener("input", function(e) {
@@ -204,7 +294,7 @@ document.querySelectorAll(".status-chip").forEach(function(chip) {
   });
 });
 
-// Type filter chips — multi-select
+// Type filter chips
 document.querySelectorAll(".type-chip").forEach(function(chip) {
   chip.addEventListener("click", function() {
     var t = chip.dataset.type;
@@ -579,7 +669,8 @@ function showDetailPrettyResult(result) {
 
   var cpBtn = document.getElementById("btn-detail-copy-pretty");
   if (cpBtn) cpBtn.onclick = function() {
-    navigator.clipboard.writeText(body).then(function() { setStatus("Copied ✓"); });
+    copyText(body);
+    setStatus("Copied ✓");
   };
 }
 
@@ -594,8 +685,34 @@ document.getElementById("btn-send-repeater").addEventListener("click", function(
 document.getElementById("btn-copy-curl").addEventListener("click", function() {
   var req = allRequests.find(function(r) { return r.id === selectedRequestId; });
   if (!req) return;
-  navigator.clipboard.writeText(buildCurl(req))
-    .then(function() { setStatus("cURL copied ✓"); });
+  copyText(buildCurl(req));
+  setStatus("cURL copied ✓");
+});
+
+// ─── FIX 3: Send to Intruder from History ─────────────
+document.getElementById("btn-send-intruder").addEventListener("click", function() {
+  var req = allRequests.find(function(r) { return r.id === selectedRequestId; });
+  if (!req) {
+    setStatus("⚠ No request selected");
+    return;
+  }
+  
+  // Build raw request
+  var raw = req.method + ' ' + req.url + ' HTTP/1.1\n';
+  Object.keys(req.requestHeaders || {}).forEach(function(k) {
+    if (k.toLowerCase() !== 'content-length') {
+      raw += k + ': ' + req.requestHeaders[k] + '\n';
+    }
+  });
+  raw += '\n' + (req.requestBody || '');
+  
+  document.getElementById('intruder-request').value = raw;
+  switchTab('intruder');
+  
+  // === ADD THE WORKSPACE COMPONENT INITIALIZATION HERE ===
+  initIntruderTabs(); 
+  
+  setStatus('✅ Request sent to Intruder');
 });
 
 function switchTab(name) {
@@ -729,7 +846,7 @@ function collectHdrs() {
   return h;
 }
 
-// ─── FIX: Send Request (Removed dropdown override + Origin/Referer) ──
+// ─── Send Request ─────────────────────────────────────
 document.getElementById("btn-send-req").addEventListener("click", doSend);
 
 function doSend() {
@@ -741,7 +858,6 @@ function doSend() {
   if (!s) { btn.disabled=false; btn.textContent="▶ SEND"; return; }
 
   var h = Object.assign({}, s.headers);
-  
 
   sendBg({ type:"SEND_REPEATER", request:{ id:activeSessionId, method:s.method, url:s.url, requestHeaders:h, requestBody:s.body||null }});
   btn.disabled=false; btn.textContent="▶ SEND";
@@ -879,7 +995,10 @@ var _wb = document.getElementById("btn-wrap-toggle");
 if (_rb) _rb.addEventListener("click", function() { setViewMode("raw"); });
 if (_pb) _pb.addEventListener("click", function() { if (!_pb.disabled) setViewMode("pretty"); });
 if (_cb) _cb.addEventListener("click", function() {
-  if (lastRespBody) navigator.clipboard.writeText(lastRespBody).then(function() { setStatus("Copied ✓"); });
+  if (lastRespBody) {
+    copyText(lastRespBody);
+    setStatus("Copied ✓");
+  }
 });
 if (_wb) _wb.addEventListener("click", function() {
   var be = document.getElementById("rep-response-body");
@@ -926,8 +1045,8 @@ document.getElementById("btn-decode-chain").addEventListener("click", function()
   document.getElementById("decoder-output").value = "";
 });
 document.getElementById("btn-copy-output").addEventListener("click", function() {
-  navigator.clipboard.writeText(document.getElementById("decoder-output").value)
-    .then(function() { setStatus("Copied ✓"); });
+  copyText(document.getElementById("decoder-output").value);
+  setStatus("Copied ✓");
 });
 document.getElementById("decode-action").addEventListener("change", function(e) {
   document.getElementById("jwt-inspector").classList.toggle("hidden", e.target.value !== "jwt-decode");
@@ -1301,21 +1420,330 @@ function loadBookmarks() {
   });
 }
 
+// ─── INTRUDER ENGINE ────────────────────────────────────
+
+function findPayloadPositions(request) {
+  var positions = [];
+  var regex = /§([^§]*)§/g;
+  var match;
+  while ((match = regex.exec(request)) !== null) {
+    positions.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      placeholder: match[1] || "payload"
+    });
+  }
+  return positions;
+}
+
+function replacePayloads(request, positions, payloads) {
+  var result = request;
+  for (var i = positions.length - 1; i >= 0; i--) {
+    var pos = positions[i];
+    var replacement = payloads[i] !== undefined ? payloads[i] : pos.placeholder;
+    result = result.slice(0, pos.start) + replacement + result.slice(pos.end);
+  }
+  return result;
+}
+
+function parseRawRequest(raw) {
+  var lines = raw.split('\n');
+  var requestLine = lines[0] || '';
+  var parts = requestLine.split(' ');
+  var method = parts[0] || 'GET';
+  var url = parts[1] || '/';
+  var headers = {};
+  var body = '';
+  var inHeaders = true;
+  
+  for (var i = 1; i < lines.length; i++) {
+    var line = lines[i];
+    if (inHeaders && line.trim() === '') {
+      inHeaders = false;
+      continue;
+    }
+    if (inHeaders) {
+      var colonIdx = line.indexOf(':');
+      if (colonIdx > 0) {
+        var key = line.slice(0, colonIdx).trim();
+        var value = line.slice(colonIdx + 1).trim();
+        headers[key] = value;
+      }
+    } else {
+      body += line + '\n';
+    }
+  }
+  
+  return { method: method, url: url, headers: headers, body: body.trim() };
+}
+
+function generateCombinations(attackType, positions, payloads) {
+  if (attackType === "sniper") {
+    return payloads.map(function(p) { return [p]; });
+  }
+  
+  if (attackType === "battering-ram") {
+    return payloads.map(function(p) {
+      var combo = [];
+      for (var i = 0; i < positions.length; i++) combo.push(p);
+      return combo;
+    });
+  }
+  
+  if (attackType === "pitchfork") {
+    var combos = [];
+    payloads.forEach(function(line) {
+      // Split by colon (e.g., "admin:password123" -> ["admin", "password123"])
+      var parts = line.split(':');
+      var combo = [];
+      
+      for (var i = 0; i < positions.length; i++) {
+        // Fallback to full line string if there are fewer colon sections than markers
+        combo.push(parts[i] !== undefined ? parts[i] : line);
+      }
+      combos.push(combo);
+    });
+    return combos;
+  }
+  
+  if (attackType === "cluster-bomb") {
+    // 1. Build separate token arrays for each position marked
+    var columns = [];
+    for (var i = 0; i < positions.length; i++) {
+      columns.push([]);
+    }
+    
+    // 2. Extract left and right values from your user:pass rows into distinct pools
+    payloads.forEach(function(line) {
+      var parts = line.split(':');
+      for (var i = 0; i < positions.length; i++) {
+        if (parts[i] !== undefined) {
+          columns[i].push(parts[i]);
+        }
+      }
+    });
+
+    // 3. Compute the cross-product combinations across those token pools
+    var combos = [[]];
+    for (var i = 0; i < columns.length; i++) {
+      var currentColumn = columns[i];
+      if (currentColumn.length === 0) continue; 
+      
+      var newCombos = [];
+      for (var c = 0; c < combos.length; c++) {
+        for (var p = 0; p < currentColumn.length; p++) {
+          var copy = combos[c].slice();
+          copy.push(currentColumn[p]);
+          newCombos.push(copy);
+        }
+      }
+      combos = newCombos;
+    }
+    return combos;
+  }
+  
+  return [];
+}
+
+
+function onIntruderResponse(id, result) {
+  for (var i = 0; i < intruderState.results.length; i++) {
+    if (intruderState.results[i].id === id) {
+      intruderState.results[i].status = 'complete';
+      intruderState.results[i].result = result;
+      break;
+    }
+  }
+  updateIntruderUI();
+}
+
+function updateIntruderUI() {
+  var count = document.getElementById('intruder-count');
+  var progress = document.getElementById('intruder-progress');
+  var status = document.getElementById('intruder-status');
+  var tableBody = document.getElementById('intruder-results-body');
+  var startBtn = document.getElementById('btn-intruder-start');
+  var stopBtn = document.getElementById('btn-intruder-stop');
+  
+  if (count) count.textContent = intruderState.completed + '/' + intruderState.total;
+  if (progress) {
+    var pct = intruderState.total > 0 ? (intruderState.completed / intruderState.total * 100) : 0;
+    progress.style.width = Math.min(pct, 100) + '%';
+  }
+  if (status) {
+    status.textContent = intruderState.running ? '⏳ Running...' : 
+                         intruderState.stopRequested ? '⏹ Stopped' : '✅ Done';
+  }
+  
+  if (startBtn) startBtn.style.display = intruderState.running ? 'none' : 'inline-block';
+  if (stopBtn) stopBtn.style.display = intruderState.running ? 'inline-block' : 'none';
+  
+  if (tableBody) {
+    tableBody.innerHTML = '';
+    var grepPatterns = [];
+    var grepEl = document.getElementById('intruder-grep');
+    if (grepEl) {
+      grepPatterns = grepEl.value.split('\n').filter(function(p) { return p.trim(); });
+    }
+    
+    intruderState.results.forEach(function(r) {
+      var row = document.createElement('tr');
+      var statusText = r.status === 'pending' ? '⏳' : (r.result ? (r.result.success ? '✅ ' + r.result.statusCode : '❌ ' + r.result.error) : '');
+      var grepMatches = '';
+      if (r.result && r.result.body) {
+        var matches = [];
+        grepPatterns.forEach(function(pattern) {
+          if (r.result.body.indexOf(pattern) >= 0) {
+            matches.push(pattern);
+          }
+        });
+        grepMatches = matches.join(', ');
+      }
+      
+      row.innerHTML = '<td>' + (r.index + 1) + '</td>' +
+                      '<td>' + r.payload + '</td>' +
+                      '<td>' + statusText + '</td>' +
+                      '<td>' + grepMatches + '</td>' +
+                      '<td>' + (r.result ? (r.result.size || 0) : '-') + '</td>' +
+                      '<td>' + (r.result ? (r.result.duration || 0) + 'ms' : '-') + '</td>' +
+                      '<td><button class="view-intruder-result" data-idx="' + r.index + '">View</button></td>';
+      tableBody.appendChild(row);
+    });
+    
+    tableBody.querySelectorAll('.view-intruder-result').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var idx = parseInt(this.dataset.idx);
+        var result = intruderState.results[idx];
+        if (result && result.result) {
+          var bodyEl = document.getElementById('intruder-response-body');
+          if (bodyEl) {
+            bodyEl.textContent = result.result.body || JSON.stringify(result.result, null, 2);
+          }
+        }
+      });
+    });
+  }
+}
+
+function startIntruder() {
+  var request = document.getElementById('intruder-request').value;
+  var payloads = [];
+  var activePayloadTab = document.querySelector('.payload-tab.active');
+  if (activePayloadTab) {
+    var tab = activePayloadTab.dataset.tab;
+    if (tab === 'simple') {
+      payloads = document.getElementById('intruder-payloads').value.split('\n').filter(function(p) { return p.trim(); });
+    } else if (tab === 'file') {
+      payloads = document.getElementById('intruder-file-preview').value.split('\n').filter(function(p) { return p.trim(); });
+    } else if (tab === 'numbers') {
+      payloads = document.getElementById('intruder-num-preview').value.split('\n').filter(function(p) { return p.trim(); });
+    }
+  }
+  
+  var attackType = document.getElementById('intruder-attack-type').value;
+  var delay = parseInt(document.getElementById('intruder-delay').value) || 100;
+  var maxRequests = parseInt(document.getElementById('intruder-max').value) || 1000;
+  
+  var positions = findPayloadPositions(request);
+  if (!positions.length) {
+    setStatus('⚠ No §payload§ markers found in request');
+    return;
+  }
+  if (!payloads.length) {
+    setStatus('⚠ No payloads provided');
+    return;
+  }
+  
+  var combinations = generateCombinations(attackType, positions, payloads);
+  if (combinations.length > maxRequests) {
+    setStatus('⚠ ' + combinations.length + ' requests exceeds max (' + maxRequests + ')');
+    return;
+  }
+  
+  intruderState = {
+    running: true,
+    results: [],
+    total: combinations.length,
+    completed: 0,
+    stopRequested: false,
+    currentIndex: 0
+  };
+  
+  updateIntruderUI();
+  setStatus('🚀 Starting Intruder attack: ' + combinations.length + ' requests');
+  sendIntruderRequests(combinations, delay);
+}
+
+function sendIntruderRequests(combinations, delay) {
+  var index = 0;
+  
+  function sendNext() {
+    if (intruderState.stopRequested || index >= combinations.length) {
+      intruderState.running = false;
+      setStatus('✅ Intruder attack completed — ' + intruderState.completed + ' requests sent');
+      updateIntruderUI();
+      return;
+    }
+    
+    var combo = combinations[index];
+    var request = document.getElementById('intruder-request').value;
+    var positions = findPayloadPositions(request);
+    var modifiedRequest = replacePayloads(request, positions, combo);
+    
+    var parsed = parseRawRequest(modifiedRequest);
+    var payloadLabel = combo.join(',');
+    
+    var requestId = 'intruder_' + Date.now() + '_' + index;
+    
+    sendBg({
+      type: 'SEND_REPEATER',
+      request: {
+        id: requestId,
+        method: parsed.method || 'GET',
+        url: parsed.url,
+        requestHeaders: parsed.headers || {},
+        requestBody: parsed.body || null
+      }
+    });
+    
+    intruderState.results.push({
+      index: index,
+      id: requestId,
+      payload: payloadLabel,
+      status: 'pending',
+      result: null
+    });
+    
+    index++;
+    intruderState.completed++;
+    updateIntruderUI();
+    
+    setTimeout(sendNext, delay);
+  }
+  
+  sendNext();
+}
+
+function stopIntruder() {
+  intruderState.stopRequested = true;
+  setStatus('⏹ Stopping Intruder...');
+}
+
 // ─── Init ─────────────────────────────────────────────
 if (IS_STANDALONE) initStandalone();
 connectBackground();
-setStatus("PhantomProxy ready");
+setStatus('PhantomProxy ready');
 createSession(null);
 
 loadBookmarks();
 
-var _bmFilterBtn = document.getElementById("btn-filter-bookmarked");
+var _bmFilterBtn = document.getElementById('btn-filter-bookmarked');
 if (_bmFilterBtn) {
-  _bmFilterBtn.addEventListener("click", function() {
+  _bmFilterBtn.addEventListener('click', function() {
     bookmarkFilterOn = !bookmarkFilterOn;
-    _bmFilterBtn.classList.toggle("active", bookmarkFilterOn);
+    _bmFilterBtn.classList.toggle('active', bookmarkFilterOn);
     renderList();
-    setStatus(bookmarkFilterOn ? "Showing highlighted requests only" : "Showing all requests");
+    setStatus(bookmarkFilterOn ? 'Showing highlighted requests only' : 'Showing all requests');
   });
 }
 
@@ -1330,45 +1758,85 @@ if (window.PhantomFeatures) {
   );
 }
 
-var _scopeToggleBtn = document.getElementById("scope-toggle");
+var _scopeToggleBtn = document.getElementById('scope-toggle');
 if (_scopeToggleBtn) {
-  var _origScopeClick = _scopeToggleBtn.onclick;
-  _scopeToggleBtn.addEventListener("click", function() {
+  _scopeToggleBtn.addEventListener('click', function() {
     setTimeout(function() {
       _scopeToggleBtn.textContent = window.PhantomFeatures && PhantomFeatures.scopeState.enabled
-        ? "SCOPE ON" : "SCOPE OFF";
+        ? 'SCOPE ON' : 'SCOPE OFF';
     }, 10);
   });
-  _scopeToggleBtn.textContent = "SCOPE OFF";
+  _scopeToggleBtn.textContent = 'SCOPE OFF';
 }
 
-document.addEventListener("phantom:curl-import", function(e) {
-  var parsed = e.detail;
-  if (!parsed || !parsed.url) return;
-  var fakeReq = {
-    method:         parsed.method || "GET",
-    url:            parsed.url,
-    requestHeaders: parsed.headers || {},
-    requestBody:    parsed.body || null
-  };
-  createSession(fakeReq);
-  switchTab("repeater");
-});
-
-document.addEventListener("keydown", function(e) {
-  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+document.addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     var active = document.activeElement;
-    if (active && (active.id === "rep-url" || active.id === "rep-body" || active.id === "rep-raw")) {
+    if (active && (active.id === 'rep-url' || active.id === 'rep-body' || active.id === 'rep-raw')) {
       e.preventDefault();
       doSend();
     }
   }
-  if ((e.ctrlKey || e.metaKey) && e.key === "l") {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
     e.preventDefault();
-    sendBg({ type: "CLEAR_REQUESTS" });
+    sendBg({ type: 'CLEAR_REQUESTS' });
   }
-  if ((e.ctrlKey || e.metaKey) && e.key === "f") {
-    var fi = document.getElementById("filter-url");
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+    var fi = document.getElementById('filter-url');
     if (fi) { e.preventDefault(); fi.focus(); fi.select(); }
+  }
+});
+
+// ─── INTRUDER FILE LOAD ─────────────────────────────────
+document.getElementById('intruder-file-input')?.addEventListener('change', function(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  
+  setStatus('📂 Selected file: ' + file.name);
+  
+  var fileNameEl = document.getElementById('intruder-file-name');
+  if (fileNameEl) fileNameEl.textContent = file.name;
+  
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    var content = ev.target.result;
+    var preview = document.getElementById('intruder-file-preview');
+    if (preview) {
+      preview.value = content;
+      setStatus('✅ Loaded ' + file.name + ' (' + content.split('\n').length + ' payloads)');
+    }
+  };
+  reader.onerror = function() {
+    setStatus('❌ Failed to read file');
+  };
+  reader.readAsText(file);
+});
+
+// ─── INTRUDER FILE LOAD BUTTON (label triggers file input) ──
+// The label in HTML with for="intruder-file-input" handles this
+
+// Generate numbers
+document.getElementById('btn-gen-numbers')?.addEventListener('click', function() {
+  var start = parseInt(document.getElementById('num-start').value) || 1;
+  var end = parseInt(document.getElementById('num-end').value) || 100;
+  var step = parseInt(document.getElementById('num-step').value) || 1;
+  var nums = [];
+  for (var i = start; i <= end; i += step) {
+    nums.push(String(i));
+  }
+  document.getElementById('intruder-num-preview').value = nums.join('\n');
+  setStatus('✅ Generated ' + nums.length + ' numbers');
+});
+
+// Start/Stop Intruder
+document.getElementById('btn-intruder-start')?.addEventListener('click', startIntruder);
+document.getElementById('btn-intruder-stop')?.addEventListener('click', stopIntruder);
+
+// Copy intruder response - FIXED
+document.getElementById('btn-intruder-copy')?.addEventListener('click', function() {
+  var body = document.getElementById('intruder-response-body');
+  if (body && body.textContent) {
+    copyText(body.textContent);
+    setStatus('Copied ✓');
   }
 });

@@ -1713,3 +1713,388 @@ body.standalone #topbar > * {
 .type-chip[data-type="ALL"].active::before {
   content: "";
 }
+
+/* ═══════════════════════════════════════════════════
+   INTRUDER TAB (Fully Automated Stretch Integration)
+   ═══════════════════════════════════════════════════ */
+
+#intruder-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden; /* Strict viewport lockdown; forces internal scrolling only */
+  padding: 10px;
+  gap: 10px;
+  background: var(--bg-void);
+}
+
+.intruder-section {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Explicit Content Mapping (Replaces brittle nth-child chains) ─── */
+
+/* Request Body Area */
+.intruder-section:has(#intruder-request) {
+  flex: 2 !important;
+  min-height: 100px;
+}
+
+/* Payloads Workspace Area */
+.intruder-section:has(.payload-tabs) {
+  flex: 2 !important;
+  min-height: 120px;
+}
+
+/* Configuration & Grep Bars (Stay compressed) */
+.intruder-section:has(.control-row),
+.intruder-section.intruder-grep,
+.intruder-section:has(#intruder-grep) {
+  flex: 0 0 auto !important;
+}
+
+/* Execution Results Engine Panel */
+.intruder-section.intruder-results {
+  flex: 3 !important;
+  min-height: 150px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.intruder-hint {
+  font-family: var(--font-ui);
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+
+/* ─── Textarea Layout Stretch Correction ─── */
+.intruder-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-panel);
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.7;
+  outline: none;
+  box-sizing: border-box;
+  flex: 1;            
+  min-height: 0;       
+  display: block;
+  resize: none; 
+  overflow-y: auto;
+}
+
+.intruder-textarea.small {
+  min-height: 30px;
+  max-height: 50px;
+  font-size: 9px;
+  padding: 6px 12px;
+}
+
+.intruder-textarea:focus {
+  outline: none;
+  background: var(--bg-surface);
+}
+
+/* ─── Payload Tabs ───────────────────────────────────── */
+.payload-tabs {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.payload-tab {
+  padding: 2px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.payload-tab:hover {
+  border-color: var(--cyan-dim);
+  color: var(--cyan);
+}
+
+.payload-tab.active {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: var(--cyan-subtle);
+}
+
+/* ─── Panels (Forced Flex via CSS Only) ───────────────── */
+.payload-panel.hidden {
+  display: none !important;
+}
+
+.payload-panel {
+  display: flex !important;         
+  flex-direction: column;
+  flex: 1;               
+  width: 100%;
+}
+
+.file-upload-area,
+.number-controls {
+  flex-shrink: 0;
+}
+
+/* Forces inner dynamic previews to scale perfectly */
+#intruder-file-preview,
+#intruder-num-preview,
+#intruder-payloads {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ─── File Upload ────────────────────────────────────── */
+.file-upload-area {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#intruder-file-name {
+  font-family: var(--font-ui);
+  font-size: 9px;
+  color: var(--text-dim);
+  flex: 1;
+}
+
+/* ─── Numbers Controls ───────────────────────────────── */
+.number-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.number-controls label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.number-controls input {
+  width: 60px;
+  padding: 3px 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  outline: none;
+}
+
+/* ─── Controls Row ───────────────────────────────────── */
+.control-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  flex-wrap: wrap;
+  background: var(--bg-surface);
+  flex-shrink: 0;
+}
+
+.intruder-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 4px 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  min-width: 180px;
+}
+
+.intruder-input {
+  width: 80px;
+  padding: 4px 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  outline: none;
+}
+
+.send-btn {
+  padding: 6px 16px;
+  background: var(--green);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--bg-void);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition);
+}
+
+/* ─── Grep textarea ──────────────────────────────────── */
+.intruder-grep .intruder-textarea {
+  min-height: 30px;
+  max-height: 50px;
+  font-size: 9px;
+  padding: 6px 12px;
+}
+
+/* ─── Results Layout Framework ─── */
+.results-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border);
+  min-height: 32px;
+  flex-shrink: 0;
+}
+
+.results-title {
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+
+#intruder-count {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--cyan);
+  min-width: 40px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--bg-surface);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#intruder-progress {
+  height: 100%;
+  background: linear-gradient(90deg, var(--cyan-dim), var(--cyan));
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+/* Results Content Split Box */
+.results-table-wrapper {
+  overflow-y: auto;
+  flex: 1 1 50%; /* Dynamically shares half the target panel footprint */
+  min-height: 60px;
+  border-bottom: 1px solid var(--border);
+}
+
+#intruder-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+#intruder-table thead {
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+#intruder-table th {
+  padding: 6px 8px;
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+#intruder-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(0,229,255,0.04);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Response Viewer Component */
+.intruder-response-viewer {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 50%; /* Stretches gracefully inside the results context wrapper */
+  min-height: 80px;
+  overflow: hidden;
+}
+
+.response-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#intruder-response-body {
+  padding: 8px 12px;
+  background: var(--bg-panel);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.7;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  flex: 1;
+  overflow-y: auto; /* Scroll targets body content context directly */
+  margin: 0;
+}

@@ -1,4 +1,4 @@
-// PhantomProxy v2.0.1 — Features Module
+// PhantomProxy v2.1 — Features Module
 // Scope Control | Auto-highlight | HAR Export/Import | cURL Import
 // Designed as a self-contained module that hooks into panel.js state
 "use strict";
